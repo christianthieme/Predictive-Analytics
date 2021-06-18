@@ -1,0 +1,214 @@
+---
+title: "Data624 Project 1"
+author: "Group 4"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+    number_sections: no
+    theme: paper
+    highlight: tango
+    font-family: Consolas
+  pdf_document:
+    toc: yes
+---
+
+```{=html}
+<style type="text/css">
+
+code {
+  font-family: "Consolas";
+  font-size: 11px;
+}
+
+pre {
+  font-family: "Consolas";
+  font-size: 11px;
+}
+
+mark {
+  background-color: whitesmoke;
+  color: black;
+}
+
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.height=3.5)
+
+options(scipen = 9)
+set.seed(101)
+
+# library(fpp2)
+
+# library(mlbench)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(forecast)
+# library(corrplot)
+# library(GGally)
+# library(e1071)
+# library(VIM)
+# library(caret)
+
+
+# library(seasonal)
+```
+
+<font size="3">Group Members</font>
+
+-	Subhalaxmi Rout
+-	Kenan Sooklall
+-	Devin Teran
+-	Christian Thieme
+-	Leo Yi
+
+### Getting The Data
+
+```{r}
+url <- 'https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/data624_project1_dataset.csv'
+df <- read.csv(url)
+glimpse(df)
+```
+
+Let's clean it up a bit.
+
+```{r}
+# rename first column
+names(df)[1] <- 'date'
+
+# convert first column to date
+df$date <- as.Date(df$date, origin="1899-12-30") 
+
+# convert column names to all lowercase
+names(df) <- lapply(names(df), tolower)
+
+glimpse(df)
+```
+
+#### Separate Into Individual Sets
+
+```{r}
+filter_group <- function(group_name) {
+  temp_df <- df %>%
+    filter(group == group_name) %>%
+    dplyr::select(-group)
+  return(temp_df[1:1622,])
+}
+
+s1 <- filter_group('S01')
+s2 <- filter_group('S02')
+s3 <- filter_group('S03')
+s4 <- filter_group('S04')
+s5 <- filter_group('S05')
+s6 <- filter_group('S06')
+```
+
+### Exploratory Data Analysis
+
+Here's an attempt to plot the two variables we need to create forecasts for, for the first set, S01.
+
+```{r, fig.height = 10}
+s1 %>%
+  gather(variable, value, -date) %>%
+  ggplot(aes(x = date, y = value)) +
+  geom_line() +
+  facet_wrap(~variable, scales = 'free_y', nrow = 5) +
+  theme_classic()
+```
+
+#### correlation between variables
+
+Do variables 3+ even matter here? I don't think so. It doesn't look like we can use them to impute missing data.
+
+```{r}
+# s1 %>%
+#   select(-date) %>%
+#   ggpairs()
+
+# calculate correlation for complete rows
+s1[complete.cases(s1),] %>%
+  with(cor(var01, var02))
+
+# plot relationship
+ggplot(s1, aes(x = var01, y = var02)) +
+  geom_point(alpha = 0.2) +
+  theme_classic()
+
+# plot relationship, y log scale
+ggplot(s1, aes(x = var01, y = var02)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = F, method = 'lm') +
+  theme_classic() +
+  scale_y_log10()
+```
+
+#### Missing Values
+
+```{r}
+# incomplete cases row 1537:1538
+s1[!complete.cases(s1),]
+
+# highlight missing cases
+ggplot(s1, aes(x = date, y = var01)) +
+  geom_line() + 
+  geom_vline(xintercept = as.Date('2017-06-11'), lty=2)
+
+# zoom in to data, 2017
+filter(s1, date >= '2017-01-01') %>%
+  ggplot(aes(x = date, y = var01)) +
+  geom_line() + 
+  geom_vline(xintercept = as.Date('2017-06-11'), lty=2)
+```
+
+I think it would be safe to impute the average of the leading and trailing days.
+
+```{r}
+# filter(s1, date >= '2017-06-05' & date <= '2017-06-30')
+s1[1533:1542,]
+
+# calculate window average, 4 before, 4 after
+var1_window_avg <- mean(s1[1533:1542,2], na.rm = T)
+
+# impute
+s1[1537:1538,2] <- var1_window_avg
+```
+
+#### Split Training Data
+
+Let's use about 80% of the data to train the model and the last 20% to test it. 
+
+```{r}
+# each dataset was said to have 1622 rows
+n <- 1622
+test_rows <- floor(1622 * 0.80)
+
+train_s1 <- s1[1:test_rows,]
+test_s1 <- s1[test_rows + 1:1622,]
+
+fit_s1v1 <- auto.arima(train_s1$var01)
+
+fit_s1v1 %>%
+  forecast(h = (n - test_rows) + 140) %>%
+  autoplot()
+
+fit_s1v2 <- auto.arima(train_s1$var02)
+
+fit_s1v2 %>%
+  forecast(h = (n - test_rows) + 140) %>%
+  autoplot()
+
+```
+
+
+
+
+
+
+
+
+
