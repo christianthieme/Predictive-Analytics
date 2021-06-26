@@ -164,7 +164,7 @@ Many of the time series algorithms, both for forecasting and visualization, requ
 
 In data preparation, imputation of missing values is a critical step. Each of the variables provided had missing values within the data and many approaches for filling them seemed appropriate. The approaches we took differed depending on if we were imputing for the first or second type of data. For the data that had large variations from day to day (that looked almost like white noise) we deemed taking an average appropriate. For the more stable datasets, we decided to use `tidyr::fill()` to fill the missing value with the previous value in the dataset. This seemed to make sense as each point in this datasets never seemed to be very far away from the previous one.
 
-Below is a plot of Var05 and Var07 from S03. The vertical lines represent the points where there is missing data. In this case, we `tidyr::fill()` to fill the missing value with the previous value in the dataset.You can see that by choosing this method, we haven't interfered with the natural trend of the data.
+Below is a plot of Var05 and Var07 from S03. The vertical lines represent the points where there is missing data. In this case, we used `tidyr::fill()` to fill the missing value with the previous value in the dataset.You can see that by choosing this method, we haven't interfered with the natural trend of the data.
 
 ```{r}
 # zoom in to data, 2017
