@@ -3,16 +3,19 @@ title: "Data624 Project 1"
 author: "Group 4"
 date: "`r Sys.Date()`"
 output:
+  word_document:
+    toc: yes
+    toc_depth: '4'
+  pdf_document:
+    toc: yes
   html_document:
+    font-family: Consolas
+    highlight: tango
+    number_sections: no
+    theme: paper
     toc: yes
     toc_depth: 4
     toc_float: yes
-    number_sections: no
-    theme: paper
-    highlight: tango
-    font-family: Consolas
-  pdf_document:
-    toc: yes
 ---
 
 ```{=html}
