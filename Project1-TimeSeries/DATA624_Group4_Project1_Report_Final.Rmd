@@ -366,7 +366,7 @@ v5 %>%
   labs(color = 'fits',
        x = '',
        title = 'S03 Var05',
-       subtitle = 'ARMIA in Red and ETS in blue') + 
+       subtitle = 'ARIMA in Red and ETS in blue') + 
   theme_minimal() + 
   theme(
    # plot.title = element_text(hjust = 0.40),
