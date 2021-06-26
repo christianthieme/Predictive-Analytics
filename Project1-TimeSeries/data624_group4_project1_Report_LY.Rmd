@@ -167,9 +167,6 @@ This is a crucial step in data preparation. Each of the series provided had gaps
 #### Missing Values example
 
 ```{r}
-# # incomplete cases row 1537:1538
-s3[!complete.cases(s3),]
-
 # zoom in to data, 2017
 s3 %>%
   select(-date) %>%
@@ -200,7 +197,7 @@ s3[1537:1538,'var05'] <- window1_avg_var05
 s3[1537:1538,'var07'] <- window1_avg_var07
 
 # 2 days before and after second set of null values
-(window2 <- s3[1605:1610,])
+window2 <- s3[1605:1610,]
 
 # calculate window average
 window2_avg_var05 <- mean(window2$var05, na.rm = T)
