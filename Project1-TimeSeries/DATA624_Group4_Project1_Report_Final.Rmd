@@ -3,11 +3,6 @@ title: "Data624 Project 1"
 author: "Group 4"
 date: "`r Sys.Date()`"
 output:
-  word_document:
-    toc: yes
-    toc_depth: '4'
-  pdf_document:
-    toc: yes
   html_document:
     font-family: Consolas
     highlight: tango
@@ -16,6 +11,11 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
 ---
 
 ```{=html}
@@ -84,7 +84,7 @@ df$date <- as.Date(df$date, origin="1899-12-30")
 names(df) <- lapply(names(df), tolower)
 ```
 
-The dataset for this project was provided as a de-identified excel spreadsheet that included six different *groups*. Each group had two variables to be forecasted 140 periods into the future using 1622 historical periods. This data had been provided as time series data but the time period of the observations were not given. In place of a timestamp, we were given a column called `SeriesInd` which contains unique numerical values that represents an undisclosed time period.
+The dataset for this project was provided as a de-identified excel spreadsheet that included six different *groups*. Each group had two variables to be forecasted 140 periods into the future using 1,622 historical periods. This data had been provided as time series data but the time period of the observations were not given. In place of a timestamp, we were given a column called `SeriesInd` which contains unique numerical values that represents an undisclosed time period.
 
 Using `glimpse`, we can view the attributes of our dataset:
 
@@ -129,7 +129,7 @@ S06 <- filter_group('S06') %>%
   select(row_index, date, var05, var07)
 ```
 
-We began by visualizing our data using a line-plot, this helped us to see initial trend, seasonality (or lack thereof), and cyclicity of our variables. In our analysis we identified two types of variables, one type seemed to have lower numerical values moderate fluctuations form day to day. The other type of variable had very large numerical values and had extreme fluctuations from day to day. We'll visualize the two variables from group S05 below as an example:
+We began by visualizing our data using a line-plot, this helped us to see initial trend, seasonality (or lack thereof), and cyclicity of our variables. In our analysis we identified two types of variables, one type seemed to have lower numerical values and moderate fluctuations from day to day. The other type of variable had very large numerical values and had extreme fluctuations from day to day. We'll visualize the two variables from group S05 below as an example:
 
 ```{r}
   ggplot(S05) +
@@ -144,7 +144,7 @@ We began by visualizing our data using a line-plot, this helped us to see initia
   )
 ```
 
-Looking at the plot above, you can see the values on the Y-axis are extremely large and the variation from day to day is fairly significant. Additionally, we can see several large spikes throughout in the series. In looking at this plot, because there is so much movement, its hard to see if there is a trend or some type of seasonality. We determined additional visuals and tests would be needed to confirm.
+Looking at the plot above, you can see the values on the Y-axis are extremely large and the variation from day to day is fairly significant. Additionally, we can see several large spikes throughout in the series. In looking at this plot, because there is so much movement, it's hard to see if there is a trend or some type of seasonality. We determined additional visuals and tests would be needed to confirm.
 
 \pagebreak
 
@@ -173,7 +173,7 @@ Many of the time series algorithms, both for forecasting and visualization, requ
 
 #### Imputing Missing Values
 
-In data preparation, imputation of missing values is a critical step. Each of the variables provided had missing values within the data and many approaches for filling them seemed appropriate. The approaches we took differed depending on if we were imputing for the first or second type of data. For the data that had large variations from day to day (that looked almost like white noise) we deemed taking an average appropriate. For the more stable datasets, we decided to use `tidyr::fill()` to fill the missing value with the previous value in the dataset. This seemed to make sense as each point in this datasets never seemed to be very far away from the previous one.
+In data preparation, imputation of missing values is a critical step. Each of the variables provided had missing values within the data and many approaches for filling them seemed appropriate. The approaches we took differed depending on if we were imputing for the first or second type of data. For the data that had large variations from day to day (that looked almost like white noise) we deemed taking an average appropriate. For the more stable datasets, we decided to use `tidyr::fill()` to fill the missing values with the previous value in the dataset. This seemed to make sense as each point in this datasets never seemed to be very far away from the previous one.
 
 Below is a plot of Var05 and Var07 from S03. The vertical lines represent the points where there is missing data. In this case, we used `tidyr::fill()` to fill the missing value with the previous value in the dataset.You can see that by choosing this method, we haven't interfered with the natural trend of the data.
 
@@ -228,7 +228,7 @@ S03[1607:1608,'var07'] <- window2_avg_var07
 
 #### Outliers
 
-In several of the datasets, there are clear outliers that would strongly influence the models we built. Our approach was to use the `forecast::tsclean` function to resolve this issue. We use tsclean function to return a cleaned version of a time series with outliers and missing values replaced by estimated values. This function internally calls na_interpolation and replaces the outliers with the estimated values, if we select the parameter `replace.missing = True`  then it interpolates missing values as well.
+In several of the datasets, there are clear outliers that would strongly influence the models we built. Our approach was to use the `forecast::tsclean` function to resolve this issue. This function returns a *cleaned* version of a time series by replacing outliers with estimated values utilizing interpolation.
 
 Looking at Var02 from S03 in the plot below, we can see that there are some extreme spikes within the data. While these observations may not be *erroneous* data, they certainly could have a significant impact on our modeling:
 
@@ -290,7 +290,7 @@ S03$var05 %>%
 
 #### Differencing
 
-Having stationary data is critical to time series forecasting. Differencing allows us to transform the time series into stationary data. To determine whether a series was stationary or not, we plotted the series using `ggtsdisplay` and observed the plot, as well as running Kwiatkowski-Phillips-Schmidt-Shin (KPSS) tests. If the data was non-stationary, we made use of the `diff` function to difference our data. If the data still showed signs on non-stationarity, we differenced it again. The differenced results were plotted each time until stationarity was reached.
+Having stationary data is critical to time series forecasting. Differencing allows us to transform the time series into stationary data. To determine whether a series was stationary or not, we plotted the series using `ggtsdisplay` and observed the plot, as well as running Kwiatkowski-Phillips-Schmidt-Shin (KPSS) tests. If the data was non-stationary, we made use of the `diff` function to difference our data. If the data still showed signs of non-stationarity, we differenced it again. The differenced results were plotted each time until stationarity was reached.
 
 We show this process below for Var02 from Group S02:
 
@@ -308,7 +308,7 @@ S02$var02 %>%
   ggtsdisplay(main="Group S02 - Var 02, differenced", ylab="Var02")
 ```
 
-Reviewing our results above, we can see that the top plot looks much more like white noise, additionally we see that we have fewer spikes crossing the critical threshold. This data is now stationary.
+Reviewing our results above, we can see that the top plot looks much more like white noise, additionally, we see that we have fewer spikes crossing the critical threshold. This data is now stationary.
 
 \pagebreak
 
@@ -381,7 +381,7 @@ v5 %>%
   labs(color = 'fits',
        x = '',
        title = 'S03 Var05',
-       subtitle = 'ARIMA in Red and ETS in blue') + 
+       subtitle = 'ARIMA in Red and ETS in Blue') + 
   theme_minimal() + 
   theme(
    # plot.title = element_text(hjust = 0.40),
@@ -410,7 +410,7 @@ fit_v5 <- v5 %>%
 checkresiduals(fit_v5)
 ```
 
-In this case, our residuals look like white noise and have a fairly normal distribution. Additionally the ACF plot has very few spikes over the critical boundary. This gives us confidence that our confidence intervals from this forecast would be reliable. As our objective was to generate the most accurate forecasts, and not necessarily to have perfect confidence intervals, some of our models don't have picture perfect residuals, but generate more accurate forecasts than other models.
+In this case, our residuals look like white noise and have a fairly normal distribution. Additionally, the ACF plot has very few spikes over the critical boundary. This gives us confidence that our confidence intervals from this forecast would be reliable. As our objective was to generate the most accurate forecasts, and not necessarily to have perfect confidence intervals, some of our models don't have picture perfect residuals, but generate more accurate forecasts than other models.
 
 \pagebreak
 

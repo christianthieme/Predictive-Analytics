@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/785671/28bc8ed9a544406897008e9830981427
+bundleId: https://api.rpubs.com/api/v1/document/785671/28bc8ed9a544406897008e9830981427
+url: http://rpubs.com/christianthieme/785671
+when: 1624747812.39414
