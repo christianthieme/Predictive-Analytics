@@ -62,6 +62,8 @@ library(fpp3)
 -   Christian Thieme
 -   Leo Yi
 
+\pagebreak
+
 ## Introduction
 
 ```{r}
@@ -91,6 +93,8 @@ glimpse(df)
 ```
 
 In our initial exploration, we noticed that the index `SeriesInd` was in sequential order, however, after every 5 observations there would be two values missing before the series continued again. We used `count_gaps()` to analyze these implicit gaps within our data and came to the consensus that this was most likely daily data, showing data for Monday through Friday but excluding weekends and holidays. We move forward with this assumption.
+
+\pagebreak
 
 #### Initial Exploration of the Data
 
@@ -142,6 +146,8 @@ We began by visualizing our data using a line-plot, this helped us to see initia
 
 Looking at the plot above, you can see the values on the Y-axis are extremely large and the variation from day to day is fairly significant. Additionally, we can see several large spikes throughout in the series. In looking at this plot, because there is so much movement, its hard to see if there is a trend or some type of seasonality. We determined additional visuals and tests would be needed to confirm.
 
+\pagebreak
+
 The other variables in our dataset looked very similar to Var03 from S05 shown below:
 
 ```{r}
@@ -158,6 +164,8 @@ The other variables in our dataset looked very similar to Var03 from S05 shown b
 ```
 
 We can see variation within this type of variable is considerably less than in the the other type. Additionally, it looks like there is no apparent seasonality. In many of the variables of this type of data, we did see long trends (either upward or downward) and cyclicity. In looking at all the plots for every variable, we determined that further analysis was necessary to determine trend and seasonal components of the data.
+
+\pagebreak
 
 ## Data Preparation
 
@@ -269,6 +277,8 @@ In reviewing the seasonal plot above, we can see certain time periods in every y
 
 Another method was to plot autocorrelations with a large lag and to look for spikes in order to determine the length of the period. Finally, we also used the `frequency` function from the `stats` package to assess the data's inherent frequency.
 
+\pagebreak
+
 Below is an autocorrelation plot for Var05 from group S03 lagging 720 days. This lag period was chosen to include approximately two years worth of observations. This plot shows a steady decline. If seasonality existed within this data, we would observe peaks, which we could then use to set the frequency for the time series.
 
 ```{r}
@@ -276,9 +286,7 @@ S03$var05 %>%
   Acf(lag.max = 730)
 ```
 
-```{r}
-frequency(S03$var05)
-```
+\pagebreak
 
 #### Differencing
 
@@ -286,21 +294,23 @@ Having stationary data is critical to time series forecasting. Differencing allo
 
 We show this process below for Var02 from Group S02:
 
-```{r, fig.height=6}
+```{r, fig.height=6, fig.width=8}
 S02$var02 %>%
   ggtsdisplay(main="Group S02 - Var 02", ylab="Var02")
 ```
 
 Looking at the plot above we can see that this data is not stationary. The top plot does not look like white noise and the ACF and PACF plot both have many spikes above the critical threshold. This tells us that we need to difference our data.
 
-```{r}
+```{r, fig.height=6, fig.width=8}
 S02$var02 %>%
   diff() %>%
   diff() %>%
   ggtsdisplay(main="Group S02 - Var 02, differenced", ylab="Var02")
 ```
 
-Reviewing our results above, we can see that the top plot looks much more like white noise, additionally we see that we have less of our spikes crossing the critical threshold. This data is now stationary.
+Reviewing our results above, we can see that the top plot looks much more like white noise, additionally we see that we have fewer spikes crossing the critical threshold. This data is now stationary.
+
+\pagebreak
 
 ## Modeling
 
@@ -352,6 +362,8 @@ fe %>%
   accuracy(v5)
 ```
 
+\pagebreak
+
 Additionally, we plot the results of our model run below:
 
 ```{r}
@@ -383,11 +395,13 @@ The black line is the actual data, the red line is the ARIMA model, and the blue
 
 In this case, we would choose the ETS model as it is more accurate.
 
+\pagebreak
+
 #### Check Residuals
 
 After fitting the models with the best performer on the test data, the final step before making the predictions was to check the residuals.
 
-```{r, fig.height=6}
+```{r, fig.height=6, fig.width=8}
 # create model
 fit_v5 <- v5 %>%
   ets()
@@ -397,6 +411,8 @@ checkresiduals(fit_v5)
 ```
 
 In this case, our residuals look like white noise and have a fairly normal distribution. Additionally the ACF plot has very few spikes over the critical boundary. This gives us confidence that our confidence intervals from this forecast would be reliable. As our objective was to generate the most accurate forecasts, and not necessarily to have perfect confidence intervals, some of our models don't have picture perfect residuals, but generate more accurate forecasts than other models.
+
+\pagebreak
 
 ### Forecast
 
