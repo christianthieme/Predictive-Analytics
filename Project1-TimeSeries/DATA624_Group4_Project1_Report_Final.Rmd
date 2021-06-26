@@ -217,7 +217,7 @@ S03[1607:1608,'var07'] <- window2_avg_var07
 
 #### Outliers
 
-In several of the datasets, there are clear outliers that would strongly influence the models we built. Our approach was to use the `forecast::tsclean` function to resolve this issue. This function blah blah blah...
+In several of the datasets, there are clear outliers that would strongly influence the models we built. Our approach was to use the `forecast::tsclean` function to resolve this issue. We use tsclean function to return a cleaned version of a time series with outliers and missing values replaced by estimated values. This function internally calls na_interpolation and replaces the outliers with the estimated values, if we select the parameter `replace.missing = True`  then it interpolates missing values as well.
 
 Looking at Var02 from S03 in the plot below, we can see that there are some extreme spikes within the data. While these observations may not be *erroneous* data, they certainly could have a significant impact on our modeling:
 
