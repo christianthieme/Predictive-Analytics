@@ -1,0 +1,403 @@
+---
+title: "Data624 Project 1"
+author: "Group 4"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+    number_sections: no
+    theme: paper
+    highlight: tango
+    font-family: Consolas
+  pdf_document:
+    toc: yes
+---
+
+```{=html}
+<style type="text/css">
+
+code {
+  font-family: "Consolas";
+  font-size: 11px;
+}
+
+pre {
+  font-family: "Consolas";
+  font-size: 11px;
+}
+
+mark {
+  background-color: whitesmoke;
+  color: black;
+}
+
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, include = T, echo = F, fig.height=3.5)
+
+options(scipen = 9)
+set.seed(101)
+
+library(fpp2)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(seasonal)
+library(imputeTS)
+library(lubridate)
+```
+
+<font size="3">Group Members</font>
+
+-	Subhalaxmi Rout
+-	Kenan Sooklall
+-	Devin Teran
+-	Christian Thieme
+-	Leo Yi
+
+### Get The Data
+
+```{r}
+url <- 'https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project1-TimeSeries/data624_project1_dataset.csv'
+
+df <- read.csv(url)
+
+# rename first column
+names(df)[1] <- 'row_index'
+
+# create copy of row index
+df$date <- df$row_index
+
+# convert first column copy to date
+df$date <- as.Date(df$date, origin="1899-12-30") 
+
+# convert column names to all lowercase
+names(df) <- lapply(names(df), tolower)
+```
+
+The dataset for this project was provided to us in excel format which made it relatively easy to ingest in R. Some of us pointed to the dataset from our local machines and others uploaded a converted csv to github, importing the data from the raw link online.
+
+```{r}
+#### Separate Into Individual Sets
+
+filter_group <- function(group_name) {
+  temp_df <- df %>%
+    filter(group == group_name) %>%
+    dplyr::select(-group)
+  return(temp_df[1:1622,])
+}
+
+s1 <- filter_group('S01') %>%
+  select(row_index, date, var01, var02)
+
+s2 <- filter_group('S02') %>%
+  select(row_index, date, var02, var03)
+
+s3 <- filter_group('S03') %>%
+  select(row_index, date, var05, var07)
+
+s4 <- filter_group('S04') %>%
+  select(row_index, date, var01, var02)
+
+s5 <- filter_group('S05') %>%
+  select(row_index, date, var02, var03)
+
+s6 <- filter_group('S06') %>%
+  select(row_index, date, var05, var07)
+```
+
+Once the raw data was imported, the next step was to isolate the specific variables required for each set in the assignment. Again, our methods varied, but the results were verified and accurate.
+
+#### Initial Exploration of the Data
+
+```{r}
+glimpse(df)
+```
+
+Here's a glimpse of what the data looks like. There was a discussion and agreement within the group where we believe that we're working with daily data. The format of the index was familiar to some of us as excel formatted dates, which we sometimes see when exporting and importing excel files. The idea that this is daily data leads us to check for types of seasonality later in our analysis, however we still recognize that it has not been confirmed to be daily data.
+
+```{r, fig.height = 10}
+# stack all variables
+df_all <- select(s1, date, row_index, val = var01) %>% mutate(var = 's1v1') %>%
+  bind_rows(select(s1, date, row_index, val = var02) %>% mutate(var = 's1v2')) %>%
+  bind_rows(select(s2, date, row_index, val = var02) %>% mutate(var = 's2v2')) %>%
+  bind_rows(select(s2, date, row_index, val = var03) %>% mutate(var = 's2v3')) %>%
+  bind_rows(select(s3, date, row_index, val = var05) %>% mutate(var = 's3v5')) %>%
+  bind_rows(select(s3, date, row_index, val = var07) %>% mutate(var = 's3v7')) %>%
+  bind_rows(select(s4, date, row_index, val = var01) %>% mutate(var = 's4v1')) %>%
+  bind_rows(select(s4, date, row_index, val = var02) %>% mutate(var = 's4v2')) %>%
+  bind_rows(select(s5, date, row_index, val = var02) %>% mutate(var = 's5v2')) %>%
+  bind_rows(select(s5, date, row_index, val = var03) %>% mutate(var = 's5v3')) %>%
+  bind_rows(select(s6, date, row_index, val = var05) %>% mutate(var = 's6v5')) %>%
+  bind_rows(select(s6, date, row_index, val = var07) %>% mutate(var = 's6v7'))
+
+# # this is used to check the max values and group manually
+# df_all %>%
+#   group_by(var) %>%
+#   summarize(mv = max(val, na.rm = T))
+
+# set different levels for each var
+df_all$class <- ifelse(df_all$var %in% c('s2v2'), 'high', ifelse(df_all$var %in% c('s1v2', 's4v2', 's5v2'), 'mid', 'low')) %>%
+  factor(levels = c('low', 'mid', 'high'))
+
+# show scientific notation for the plot y-axis
+options(scipen=1)
+
+# generate plot
+ggplot(df_all, aes(x = row_index, y = val, color = var)) +
+  geom_line(alpha = 0.6) +
+  facet_wrap(~class, scales='free_y', nrow = 3) +
+  labs(x = element_blank(),
+       y = element_blank())
+
+```
+
+This is a chart of all of the time series sharing the same x-axis. We can see that 9 of the 12 variables have max values less than 200 and the other 3 variables have relatively enormous values. We can also see some clear trends, obvious outliers, and potential cycles. The idea of seasonality here is difficult to see on this plot and depends on a deeper analysis at the variable level.
+
+This is a consolidated view, but in practice, we split the variables up among our group and each individual performed a deep dive on each variable.
+
+### Imputing Missing Values
+
+This is a crucial step in data preparation. Each of the series provided had gaps within the data and we all seemed to take different methods to tackle the null values based on the series. For seemingly stationary series, an average value could be used. For non-stationary data, we can impute based on values nearest to the missing value, or use other packages that have functions to handle this situation. We used functions like <mark> tidyr::fill() </mark> and <mark> imputeTS::na.interpolation() </mark>.  
+
+#### Missing Values example
+
+```{r}
+# # incomplete cases row 1537:1538
+s3[!complete.cases(s3),]
+
+# zoom in to data, 2017
+s3 %>%
+  select(-date) %>%
+  gather(variable, value, -row_index) %>%
+  ggplot(aes(x = row_index, y = value, color = variable)) +
+  geom_line(alpha = 0.5) +
+  geom_vline(xintercept = 42897, alpha = 0.3) +
+  geom_vline(xintercept = 42898, alpha = 0.3) +
+  geom_vline(xintercept = 42997, alpha = 0.3) +
+  geom_vline(xintercept = 43000, alpha = 0.3) +
+  labs(title = 'S03',
+       x = element_blank(),
+       y = element_blank())
+```
+
+As an example, here's a portion of both series from S03. The vertical lines represent the points where there is missing data. In this case, we averaged a window of the two lagging and leading periods.
+
+```{r}
+# 2 days before and after first null values
+window1 <- s3[1535:1540,]
+
+# calculate window average
+window1_avg_var05 <- mean(window1$var05, na.rm = T)
+window1_avg_var07 <- mean(window1$var07, na.rm = T)
+
+# impute window 1
+s3[1537:1538,'var05'] <- window1_avg_var05
+s3[1537:1538,'var07'] <- window1_avg_var07
+
+# 2 days before and after second set of null values
+(window2 <- s3[1605:1610,])
+
+# calculate window average
+window2_avg_var05 <- mean(window2$var05, na.rm = T)
+window2_avg_var07 <- mean(window2$var07, na.rm = T)
+
+# impute window 2
+s3[1607:1608,'var05'] <- window2_avg_var05
+s3[1607:1608,'var07'] <- window2_avg_var07
+
+# # double check for missing values
+# s3[!complete.cases(s3),]
+```
+
+#### Outliers
+
+In some of the datasets, there are clear outliers that may affect the models we build. Our approach was to use the <mark> forecast::tsclean </mark> function to resolve this issue.
+
+After imputing missing values and before outlier resolution:
+
+```{r, warning=F}
+s2 <- imputeTS::na.interpolation(s2)
+
+data_s02_v3 <- ts(s2$var02)
+
+autoplot(data_s02_v3) +
+  geom_line(color="#69b3a2", show.legend = FALSE) + 
+  ylab("") +
+  ggtitle("Var 02")
+```
+
+Same time series after outliers adjusted:
+
+```{r}
+data_s02_v3 %>%
+  tsclean() %>%
+  autoplot() + 
+  geom_line( color="#E69F00", show.legend = FALSE) +
+  ggtitle("Var02")
+```
+
+#### Seasonality
+
+Finding seasonality seemed to be tied to the frequency we set when creating our time series objects. We discussed using 1 vs 365, but there was some hesitation since we couldn't confirm that the actual frequency of the data was measured by day. From here, we had serveral approaches to determining seasonality. One method was to contruct plots and to visually examine for seasonality. Another method was to plot autocorrelations with a large lag assuming this was daily data and to observe for spikes in order to determine the length of the period. Finally, we also found a resource online which provided a function we could use to determine the frequency based on each series.
+
+```{r}
+s3$var05 %>%
+  Acf(lag.max = 730)
+```
+
+Here is an autocorrelation plot for S03 Var05 lagging 720 days, which was chosen to include approximately two years worth of observations. This plot shows a steady decline. If seasonality existed within this data, we would observe peaks, which we could then use to set the frequency for the time series.
+
+Alternatively, we can use the function referenced from the links below to calculate the frequency to use.
+
+  - https://robjhyndman.com/hyndsight/tscharacteristics/
+  - https://stats.stackexchange.com/questions/1207/period-detection-of-a-generic-time-series/1214#1214
+
+```{r, echo = T}
+find.freq <- function(x)
+{
+    n <- length(x)
+    spec <- spec.ar(c(x),plot=FALSE)
+    if(max(spec$spec)>10) # Arbitrary threshold chosen by trial and error.
+    {
+        period <- round(1/spec$freq[which.max(spec$spec)])
+        if(period==Inf) # Find next local maximum
+        {
+            j <- which(diff(spec$spec)>0)
+            if(length(j)>0)
+            {
+                nextmax <- j[1] + which.max(spec$spec[j[1]:500])
+                period <- round(1/spec$freq[nextmax])
+            }
+            else
+                period <- 1
+        }
+    }
+    else
+        period <- 1
+    return(period)
+}
+
+find.freq(s3$var05)
+```
+
+#### Differencing
+
+This step will allow us to transform the time series into stationary data. This is an important step in order to construct an ARIMA model. In order to determine whether a series was stationary or not, we plotted the series using <mark> ggtsdisplay() </mark> and observed the plot, as well as running Kwiatkowski-Phillips-Schmidt-Shin (KPSS) tests.
+
+In order to transform each series, some group members chose to do this manually, while others started with the function <mark> ndiffs() </mark>. The differenced results were plotted again and this method was repeated until we reached stationary results.
+
+```{r, fig.height=6}
+s2$var02 %>%
+  ggtsdisplay(main="Group S02 - Var 02", ylab="Var02")
+```
+
+---
+
+```{r}
+s2$var02 %>%
+  diff() %>%
+  ggtsdisplay(main="Group S02 - Var 02, differenced", ylab="Var02")
+```
+
+### Modeling
+
+Once the data is prepared for modeling, our general approach was to split each time series into training and testing sets, using about 80-85% of the first 1,622 rows as the training data. 
+
+We created multiple models using the training data and compared the accuracy against the test data. The model with the minimum errors, using RMSE and MAPE, were selected and then the best model would be used to generate the forecast for the next 140 periods.
+
+One thing to note is that some of us chose to difference the data and run <mark> Arima() </mark>, while others chose to skip the differencing step and used <mark> auto.arima() </mark>. We also fit using <mark> ets() </mark>, before comparing accuracy.
+
+```{r}
+# each dataset was said to have 1622 rows
+n <- 1622
+
+# find 80% of row count
+train_rows <- floor(1622 * 0.80)
+test_rows <- n - train_rows
+
+# split training and test sets
+train <- s3[1:train_rows,]
+test <- s3[(train_rows + 1):1622,]
+
+# time series objects
+v5 <- ts(s3$var05)
+v5_train <- ts(train$var05)
+
+
+# create models based off training data
+fa <- v5_train %>% auto.arima()
+fe <- v5_train %>% ets()
+```
+
+<mark> auto.arima() </mark> accuracy:
+
+```{r}
+# evaluate accuracy of arima
+fa %>%
+  forecast(h = test_rows) %>%
+  accuracy(v5)
+```
+
+<mark> ets() </mark> accuracy:
+
+```{r}
+# evaluate accuracy of ets
+fe %>%
+  forecast(h = test_rows) %>%
+  accuracy(v5)
+```
+
+Above, we can see the results of the accuracy function on S03 Var05. The training data used the first 80% of the full series, and the last 20% was used as the test set.
+
+It looks like exponential smoothing does a better job of fitting the test data.
+
+```{r}
+fa_p <- fa %>%
+  forecast(h = test_rows, level = 0)
+
+fe_p <- fe %>%
+  forecast(h = test_rows, level = 0)
+
+# I can't figure out how to add a legend to this!!!
+v5 %>%
+  autoplot(color = 'black') +
+  autolayer(fa_p, color = 'red') +
+  autolayer(fe_p, color = 'blue') +
+  labs(color = 'fits',
+       x = '',
+       title = 'S03 Var05',
+       subtitle = 'ARMIA in Red and ETS in blue') 
+  
+```
+
+Above we can see the plot of the time series associated with the accuracy outputs with the predictions of the two models on the test data, without prediction intervals. This time series did not show seasonality and the ETS model in blue was chosen based on the accuracy. We can also observe here that the ets model is a closer match to the actual test data.
+
+#### Check Residuals
+
+After fitting the models with the best performer on the test data, the final step before making the predictions was to check the residuals.
+
+```{r, fig.height=6}
+# create model
+fit_v5 <- v5 %>%
+  ets()
+
+# check residuals
+checkresiduals(fit_v5)
+```
+
+### Forecast
+
+Finally, once we have chosen our models, we need to predict the next 140 periods for submission and evaluation.
+
+```{r, echo=T}
+fit_v5 %>%
+  forecast(h=140) %>%
+  data.frame() %>%
+  select(Point.Forecast) %>%
+  head()
+```
