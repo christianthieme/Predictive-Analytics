@@ -156,7 +156,7 @@ ggplot(df_all, aes(x = row_index, y = val, color = var)) +
 
 ```
 
-This is a chart of all of the time series sharing the same x-axis. We can see that 9 of the 12 variables have max values less than 200 and the other 3 variables have relatively enormous values. We can also see some clear trends, obvious outliers, and potential cycles. The idea of seasonality here is difficult to see on this plot and depends on a deeper analysis at the variable level.
+This is a chart of all of the time series sharing the same x-axis. We can see that 8 of the 12 variables have max values less than 200 and the other 4 variables have relatively enormous values. We can also see some clear trends, obvious outliers, and potential cycles. The idea of seasonality here is difficult to see on this plot and depends on a deeper analysis at the variable level.
 
 This is a consolidated view, but in practice, we split the variables up among our group and each individual performed a deep dive on each variable.
 
