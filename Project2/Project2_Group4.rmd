@@ -81,32 +81,32 @@ We have been given a dataset from a beverage manufacturing company that consists
 We'll begin by reading in the dataset and looking at each column's data type: 
 
 ```{r}
-train_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentData%20-%20TO%20MODEL.csv')
+data_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentData%20-%20TO%20MODEL.csv')
 
-train_raw$obs_type <- "train"
+data_raw$obs_type <- "train"
 
-test_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentEvaluation-%20TO%20PREDICT.csv')
+eval_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentEvaluation-%20TO%20PREDICT.csv')
 
-test_raw$obs_type <- "test"
+eval_raw$obs_type <- "test"
 
-df <- train_raw %>%
-  rbind(test_raw)
+combined <- data_raw %>%
+  rbind(eval_raw)
 
 # convert column names to all lowercase
-names(df) <- lapply(names(df), tolower)
+names(combined) <- lapply(names(combined), tolower)
 
 # convert column name spaces to underscore
-names(df) <- str_replace_all(names(df), ' ', '_')
+names(combined) <- str_replace_all(names(combined), ' ', '_')
 
-train <- df %>%
+df <- combined %>%
   filter(obs_type == 'train') %>%
   select(-obs_type)
 
-test <- df %>%
+eval <- combined %>%
   filter(obs_type == 'test') %>%
   select(-obs_type)
 
-glimpse(df)
+glimpse(combined)
 ```
 We see that all columns, with the exception of `brand`, are doubles and continuous. Excluding the response variable, this means that we have 1 categorical variable and 31 continuous variables to work with. 
 
@@ -115,7 +115,7 @@ We see that all columns, with the exception of `brand`, are doubles and continuo
 In the output above, we can see that there are missing values (NAs). Let's see how pervasive this issue is within our dataset: 
 
 ```{r fig.width = 12, fig.height=6}
-train %>%
+df %>%
   visdat::vis_miss(sort_miss = TRUE)
 ```
 
@@ -126,7 +126,7 @@ In total, only about 1% of our data is missing. We can see that most of the colu
 Let's get an understanding of the distribution of our response variable: 
 
 ```{r}
-train %>%
+df %>%
   select(ph) %>%
   ggplot() + 
   aes(x = ph) + 
@@ -136,7 +136,7 @@ train %>%
 The distribution of pH is left-skewed and multi-modal. Generally speaking, when we see a multi-modal distribution, often times that is an indication that there are sub-populations within the distribution. We know from looking at our dataset that there is a `brand code` with values A, B, C, and D. Let's break up the above distribution into 4 distributions based on these values: 
 
 ```{r fig.height=6, fig.width=10}
-train %>%
+df %>%
   ggplot() + 
   aes(x = ph) + 
   geom_histogram() +
@@ -149,7 +149,7 @@ Breaking down to this further grain does not seem to be much more helpful. There
 Now we'll turn our attention to the numeric features within our dataset: 
 
 ```{r fig.height=15, fig.width=10}
-train %>%
+df %>%
   select(-ph) %>%
   inspectdf::inspect_num() %>%
   show_plot() +
@@ -170,7 +170,7 @@ We note the following about these distributions:
 Now that we've looked at our response variable, let's look at our explanatory variables. We'll begin first by looking at `brand code`, which is our only categorical variable: 
 
 ```{r fig.height=5, fig.width=12}
-train %>%
+df %>%
   select(brand_code, ph) %>%
   ggplot() + 
   aes(y = ph) + 
@@ -185,7 +185,7 @@ We can see from the above boxplots that `brand_code` does have a meaningful rela
 **Numeric Features**
 
 ```{r fig.height=15, fig.width=12, message=FALSE, warning=FALSE}
-train %>%
+df %>%
   select(-brand_code) %>% 
   gather(variable, value, -ph) %>%
   ggplot(aes(x = value, y = ph)) +
@@ -215,7 +215,7 @@ We note the following about the relationship between pH and these variables:
 For many models, correlation between features can be an issue. Let's see what the correlation between our variables looks like: 
 
 ```{r fig.height=12, fig.width=12}
-numeric_values <- train %>% 
+numeric_values <- df %>% 
   dplyr::select_if(is.numeric)
 
 numeric_values <- numeric_values[complete.cases(numeric_values),] %>% 
@@ -243,11 +243,11 @@ We see many of our features are *highly* correlated. There are several methods w
 We'll need to transform our categorical feature `brand_codes` into a dummy variable: 
 
 ```{r}
-dmy <- dummyVars(~brand_code, data = df)
-dmy_cols <- predict(dmy, df)
+dmy <- dummyVars(~brand_code, data = combined)
+dmy_cols <- predict(dmy, combined)
 
 # version 2 with brand code as dummy vars instead of factor
-df2 <- df %>% 
+df2 <- combined %>% 
   cbind(dmy_cols) %>%
   select(-brand_code)
 ```
@@ -287,9 +287,9 @@ feature_df <- df_transformed %>%
   filter(obs_type == 'train') %>% 
   select(-obs_type)
 
-response_df <- df %>% 
-  filter(obs_type == 'train') %>% 
-  select(obs_type)
+response_df <- df_transformed %>% 
+  filter(obs_type == 'test') %>% 
+  select(-obs_type)
 
 rfModel <- randomForest(feature_df, response_df$ph)
 rfModel
@@ -312,7 +312,6 @@ Also, the training data wasn't split into training and testing sets so we have n
 # remove rows without a response variable or brand code
 df3 <- df %>%
   filter(!is.na(ph)) %>%
-  select(-obs_type) %>%
   mutate(brand_code = factor(brand_code))
 
 # isNZV <- nearZeroVar(df3)
