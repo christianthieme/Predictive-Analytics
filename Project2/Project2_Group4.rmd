@@ -38,8 +38,9 @@ mark {
 
 </style>
 ```
-```{r setup, include=FALSE}
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F)
 
 options(scipen = 9)
 set.seed(101)
@@ -48,6 +49,7 @@ library(fpp2)
 library(ggplot2)
 library(tidyr)
 library(dplyr)
+library(stringr)
 library(broom)
 library(seasonal)
 library(imputeTS)
@@ -59,6 +61,7 @@ library(corrplot)
 library(caret)
 library(fpp3)
 library(randomForest)
+library(Cubist)
 ```
 
 <font size="3">Group Members</font>
@@ -69,7 +72,7 @@ library(randomForest)
 -   Christian Thieme
 -   Leo Yi
 
-/pagebreak
+\pagebreak
 
 ## Introduction
 
@@ -78,20 +81,30 @@ We have been given a dataset from a beverage manufacturing company that consists
 We'll begin by reading in the dataset and looking at each column's data type: 
 
 ```{r}
-train <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentData%20-%20TO%20MODEL.csv')
+train_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentData%20-%20TO%20MODEL.csv')
 
-train$obs_type <- "train"
+train_raw$obs_type <- "train"
 
-test <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentEvaluation-%20TO%20PREDICT.csv')
+test_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentEvaluation-%20TO%20PREDICT.csv')
 
-test$obs_type <- "test"
+test_raw$obs_type <- "test"
 
-df <- train %>%
-  rbind(test) %>%
-  filter(!is.na(PH))
+df <- train_raw %>%
+  rbind(test_raw)
 
 # convert column names to all lowercase
 names(df) <- lapply(names(df), tolower)
+
+# convert column name spaces to underscore
+names(df) <- str_replace_all(names(df), ' ', '_')
+
+train <- df %>%
+  filter(obs_type == 'train') %>%
+  select(-obs_type)
+
+test <- df %>%
+  filter(obs_type == 'test') %>%
+  select(-obs_type)
 
 glimpse(df)
 ```
@@ -102,7 +115,8 @@ We see that all columns, with the exception of `brand`, are doubles and continuo
 In the output above, we can see that there are missing values (NAs). Let's see how pervasive this issue is within our dataset: 
 
 ```{r fig.width = 12, fig.height=6}
-visdat::vis_miss(df %>% filter(obs_type == 'train'), sort_miss = TRUE)
+train %>%
+  visdat::vis_miss(sort_miss = TRUE)
 ```
 
 In total, only about 1% of our data is missing. We can see that most of the columns are only missing a negligible amount of data. `mfr` and `brand code` have the largest amount of missing values and are missing 8.25% and 4.67% of their data, respectively. Additionally, there does not appear to be a pattern in which values are missing. Now that we understand that our missing values are not a pervasive issue, we'll continue with our analysis.
@@ -112,8 +126,7 @@ In total, only about 1% of our data is missing. We can see that most of the colu
 Let's get an understanding of the distribution of our response variable: 
 
 ```{r}
-df %>% 
-  filter(obs_type == 'train') %>%
+train %>%
   select(ph) %>%
   ggplot() + 
   aes(x = ph) + 
@@ -123,15 +136,12 @@ df %>%
 The distribution of pH is left-skewed and multi-modal. Generally speaking, when we see a multi-modal distribution, often times that is an indication that there are sub-populations within the distribution. We know from looking at our dataset that there is a `brand code` with values A, B, C, and D. Let's break up the above distribution into 4 distributions based on these values: 
 
 ```{r fig.height=6, fig.width=10}
-df %>% 
-  filter(obs_type == 'train') %>%
-  #filter(`brand code` == 'A') %>% 
-  select(`brand code`, ph) %>%
+train %>%
   ggplot() + 
   aes(x = ph) + 
   geom_histogram() +
-  labs(title = "Brand A") + 
-  facet_wrap(~`brand code`)
+  labs(title = "Distribution of pH by Brand") + 
+  facet_wrap(~brand_code, scales = 'free_y')
 ```
 
 Breaking down to this further grain does not seem to be much more helpful. There may be even more granular sub-populations within this data that we are not seeing. 
@@ -139,17 +149,20 @@ Breaking down to this further grain does not seem to be much more helpful. There
 Now we'll turn our attention to the numeric features within our dataset: 
 
 ```{r fig.height=15, fig.width=10}
-inspectdf::inspect_num(df %>%  filter(obs_type == 'train') %>% select(-ph)) %>% 
-  show_plot()
+train %>%
+  select(-ph) %>%
+  inspectdf::inspect_num() %>%
+  show_plot() +
+  labs(title = 'Distribution of Numeric Columns in Training Data')
 ```
 
 We note the following about these distributions: 
 
-* `air pressurer` - there appears to be either two distributions here, or a single distribution with a pocket of outliers
-* `balling`, `balling lvl`, `density`,`fill pressure`, `hyd pressure1`, `hyd pressure2`, `hyd pressure3`, `hyd pressure4`, `mnf flow`, `pressure setpoint`- there appears to be two distributions here. This could potentially be connected to the type of `brand code` or something else not as easily distinguishable. 
-* `bowl setpoint` - half of all the values are around 120
-* `carb flow` - most values fall between 3,000 and 4,000 with a large pocket of values at 1,000 as well
-* `filler speed`, `mfr`, `oxygen filler` - either appears to have two distributions or a few significant outliers
+* `air_pressurer` - there appears to be either two distributions here, or a single distribution with a pocket of outliers
+* `balling`, `balling_lvl`, `density`,`fill_ _pressure`, `hyd_pressure1`, `hyd_pressure2`, `hyd_pressure3`, `hyd_pressure4`, `mnf_flow`, `pressure_setpoint`- there appears to be two distributions here. This could potentially be connected to the type of `brand_code` or something else not as easily distinguishable. 
+* `bowl_setpoint` - half of all the values are around 120
+* `carb_flow` - most values fall between 3,000 and 4,000 with a large pocket of values at 1,000 as well
+* `filler_speed`, `mfr`, `oxygen_filler` - either appears to have two distributions or a few significant outliers
 * general note: it appears that many of these distributions are skewed in one way or another. We note that a transformation may be helpful when generating predictions. 
 
 #### Explanatory Variable Relationships with the Response Variable
@@ -157,27 +170,23 @@ We note the following about these distributions:
 Now that we've looked at our response variable, let's look at our explanatory variables. We'll begin first by looking at `brand code`, which is our only categorical variable: 
 
 ```{r fig.height=5, fig.width=12}
-df %>% 
-  filter(obs_type == 'train') %>%
-  select(`brand code`,ph) %>%
+train %>%
+  select(brand_code, ph) %>%
   ggplot() + 
   aes(y = ph) + 
   geom_boxplot()+
   labs(title = 'Brand Code Box Plots') + 
-  facet_grid(~`brand code`, scales = 'free_x')
-  
+  facet_grid(~brand_code) +
+  theme(axis.ticks.x = element_blank())
 ```
 
-We can see from the above boxplots that `brand code` does have a meaningful relationship with pH. We can also see some significant outliers in C and possibly D that that will need to be evaluated further. We'll now turn our attention to the numeric features in our dataset.
+We can see from the above boxplots that `brand_code` does have a meaningful relationship with pH. We can also see some significant outliers in C and possibly D that that will need to be evaluated further. We'll now turn our attention to the numeric features in our dataset.
 
 **Numeric Features**
 
 ```{r fig.height=15, fig.width=12, message=FALSE, warning=FALSE}
-df %>% 
-  filter(obs_type == 'train') %>%
- # data.frame() %>%
-  select(-`brand code`, -obs_type) %>% 
-  #filter(`brand code` == 'C') %>%
+train %>%
+  select(-brand_code) %>% 
   gather(variable, value, -ph) %>%
   ggplot(aes(x = value, y = ph)) +
   geom_point() +
@@ -187,18 +196,18 @@ df %>%
 
 We note the following about the relationship between pH and these variables: 
 
-* `air pressurer` - it appears that there are two sub-groups here. In looking to see if this was due to `brand code` we found that these sub-groups exist even at individual group levels
-* `alch rel` - most points appear to be gathered in 3 distinct areas, however there do appear to be 7 outliers
-* `balling`, `balling lvl` - it appears that there are two sub-groups here. These sub-groups do potentially look to be associated with `brand code`
-* `bowl setpoint` - appears to potentially be a categorical variable as the values don't appear to be continuous. Also appear to potentially be some outliers
-* `carb flow` - appear to be two or three groups of data points. Also note the presence of outliers
+* `air_pressurer` - it appears that there are two sub-groups here. In looking to see if this was due to `brand_code` we found that these sub-groups exist even at individual group levels
+* `alch_rel` - most points appear to be gathered in 3 distinct areas, however there do appear to be 7 outliers
+* `balling`, `balling_lvl` - it appears that there are two sub-groups here. These sub-groups do potentially look to be associated with `brand_code`
+* `bowl_setpoint` - appears to potentially be a categorical variable as the values don't appear to be continuous. Also appear to potentially be some outliers
+* `carb_flow` - appear to be two or three groups of data points. Also note the presence of outliers
 * `density` - appear to be two to three groups of points. We note the presence of an outlier
-* `filler speed` - appear to mostly fall within the low or high range. Values in the middle are less frequent.
-* `pressure setpoint` - appear to be discrete values with the exception of 4 outliers
-* `pressure vacuum` - appear to be discrete values with a potentially positive linear relationship. We note the presence of an outlier
-* `psc co2` - appear to be discrete values. We note the presence of an outlier
-* `psc fill` - there appear to be 5 bands that values can fall into with certain areas that do not have values. We may consider adding a categorical variable to capture this
-* `carb pressure`, `carb pressure1`, `carb rel`, `carb volume`, `fill ounces`, `fill pressure`, `filler level`, `hyd pressure1-4`, `mfr`, `oxygen filler`, `pc volume`, `psc`, `temperature`, `usage cont`- no visible relationship. We do note the presence of outliers
+* `filler_speed` - appear to mostly fall within the low or high range. Values in the middle are less frequent.
+* `pressure_setpoint` - appear to be discrete values with the exception of 4 outliers
+* `pressure_vacuum` - appear to be discrete values with a potentially positive linear relationship. We note the presence of an outlier
+* `psc_co2` - appear to be discrete values. We note the presence of an outlier
+* `psc_fill` - there appear to be 5 bands that values can fall into with certain areas that do not have values. We may consider adding a categorical variable to capture this
+* `carb_pressure`, `carb_pressure1`, `carb_rel`, `carb_volume`, `fill_ounces`, `fill_pressure`, `filler_level`, `hyd_pressure1-4`, `mfr`, `oxygen_filler`, `pc_volume`, `psc`, `temperature`, `usage_cont`- no visible relationship. We do note the presence of outliers
 * General note: It appears that many of these variables are on different scales. We'll take care of this during our data prep phase. 
 
 **Correlated Features**
@@ -206,9 +215,14 @@ We note the following about the relationship between pH and these variables:
 For many models, correlation between features can be an issue. Let's see what the correlation between our variables looks like: 
 
 ```{r fig.height=12, fig.width=12}
-numeric_values <- df %>% filter(obs_type == 'train') %>% dplyr::select_if(is.numeric)
-numeric_values <- numeric_values[complete.cases(numeric_values),] %>% data.frame()
+numeric_values <- train %>% 
+  dplyr::select_if(is.numeric)
+
+numeric_values <- numeric_values[complete.cases(numeric_values),] %>% 
+  data.frame()
+
 train_cor <- cor(numeric_values)
+
 corrplot::corrplot.mixed(train_cor, tl.col = 'black', tl.pos = 'lt')
 ```
 
@@ -219,22 +233,23 @@ We see many of our features are *highly* correlated. There are several methods w
 * Missing data will most likely not be a significant issue
 * There are several outliers in our features - we should think about using a modeling technique that is robust against outliers
 * Many of our features are significantly correlated with each other. PCA or another method may be helpful in reducing collinearity
-* There appear to be sub-populations even within `brand codes`. It may be helpful to do some feature engineering to tease this information from the data
+* There appear to be sub-populations even within `brand_codes`. It may be helpful to do some feature engineering to tease this information from the data
 
 
 ## Data Processing
 
 #### Dummy Variables
 
-We'll need to transform our categorical feature `brand codes` into a dummy variable: 
+We'll need to transform our categorical feature `brand_codes` into a dummy variable: 
 
 ```{r}
-dmy <- dummyVars(~`brand code`, data = df)
+dmy <- dummyVars(~brand_code, data = df)
 dmy_cols <- predict(dmy, df)
 
-df <- df %>% 
+# version 2 with brand code as dummy vars instead of factor
+df2 <- df %>% 
   cbind(dmy_cols) %>%
-  select(-`brand code`)
+  select(-brand_code)
 ```
 
 #### Data Imputation
@@ -242,10 +257,9 @@ df <- df %>%
 Earlier in our analysis, we saw that there were quite a few missing values. Before imputing data, we'll first perform a Yeo-Johnson transformation (similar to BoxCox, but accepts negative values as well), then we'll center and scale the data. Following our transformations, we'll apply principal component analysis in an effort to remove collinearity. Finally, we'll impute our missing values using KNN with 5 nearest neighbors:  
 
 ```{r message=FALSE, warning=FALSE}
-df_features <- df %>% #filter(obs_type == 'train') %>% 
+df_features <- df2 %>%
   select(-ph) %>% 
   data.frame()
-
 
 trans <- caret::preProcess(
   df_features, 
@@ -254,10 +268,6 @@ trans <- caret::preProcess(
   )
 
 df_transformed <- predict(trans, df_features)
-
-#codes <- df %>% filter(obs_type == 'train') %>% select(`brand code`) 
-
-#train_transformed <- train_transformed %>% cbind(codes) 
 ```
 
 
@@ -279,11 +289,152 @@ feature_df <- df_transformed %>%
 
 response_df <- df %>% 
   filter(obs_type == 'train') %>% 
-  select(-obs_type)
-
+  select(obs_type)
 
 rfModel <- randomForest(feature_df, response_df$ph)
 rfModel
 ```
+
+
+## Diverging directions
+
+Hey so I'm not exactly sure we need to perform all those imputations for every type of model so I'm going to kind of go in a different direction here. I preserved the `df` object and diverted the code above starting at dummy vars to the `df2` object.
+
+Also, the training data wasn't split into training and testing sets so we have no way to evaluate our models. I'm not exactly sure if it matters if we all use the same training and testing data since cross validation could be used, so we can discuss strategies next time we meet.
+
+
+### train test split
+
+```{r}
+# # distribution of brand codes
+# table(train$brand_code) / nrow(train)
+
+# remove rows without a response variable or brand code
+df3 <- df %>%
+  filter(!is.na(ph)) %>%
+  select(-obs_type) %>%
+  mutate(brand_code = factor(brand_code))
+
+# isNZV <- nearZeroVar(df3)
+# df3 <- df3[, -isNZV]
+
+# pre process
+pp <- df3 %>%
+  as.data.frame() %>%
+  preProcess(method = 'knnImpute')
+
+df3 <- predict(pp, df3)
+
+colSums(is.na(df3))
+
+df3b <- df3 %>%
+  filter(!is.na(brand_code))
+
+ctrl <- trainControl(method = 'cv', number = 10)
+
+# predict class
+pc <- train(brand_code ~ .,
+            data = df3b,
+            method = 'multinom',
+            trControl = ctrl,
+            trace = F)
+
+df3$brand2 <- predict(pc, df3)
+
+df3$brand_code <- ifelse(!is.na(df3$brand_code), df3$brand_code, df3$brand2)
+
+df3$brand2 <- NULL
+
+colSums(is.na(df3))
+
+set.seed(101)
+trainIndex <-  createDataPartition(df3$ph,
+                                   p = 0.8,
+                                   list = F)
+
+train <- df3[trainIndex, ]
+test <- df3[-trainIndex, ]
+```
+
+### some models
+
+```{r}
+# MARS
+marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
+
+set.seed(101)
+mars <- train(ph ~ .,
+              data = train,
+              method = 'earth',
+              tuneGrid = marsGrid,
+              trControl = trainControl(method = 'cv')
+              )
+
+mars
+
+# SVM
+svm <- train(ph ~ .,
+             data = train,
+             method = 'svmRadial',
+             preProc = c('center', 'scale'),
+             tuneLength = 14,
+             trControl = trainControl(method = 'cv')
+             )
+
+svm
+
+# KNN
+set.seed(101)
+knn <- train(ph ~ .,
+             data = train,
+             method = 'knn',
+             preProc = c('center', 'scale'),
+             tuneGrid = data.frame(.k = 1:20),
+             trControl = trainControl(method = 'cv')
+             )
+
+knn
+
+# random forest
+rf <- randomForest(ph ~ .,
+                   data = train,
+                   ntrees = 1000)
+
+rf
+
+# cubist
+cubist <- train(ph ~ .,
+                data = train,
+                method = 'cubist')
+
+cubist
+```
+
+### Compare Models
+
+```{r}
+test$mars <- predict(mars, test)
+test$svm <- predict(svm, test)
+test$knn <- predict(knn, test)
+test$rf <- predict(rf, test)
+test$cubist <- predict(cubist, test)
+
+postResample(pred = test$mars, obs = test$ph)
+postResample(pred = test$svm, obs = test$ph)
+postResample(pred = test$knn, obs = test$ph)
+postResample(pred = test$rf, obs = test$ph)
+postResample(pred = test$cubist, obs = test$ph)
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
