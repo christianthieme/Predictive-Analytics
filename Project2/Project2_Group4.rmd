@@ -313,8 +313,6 @@ mars <- train(ph ~ .,
               trControl = trainControl(method = 'cv')
               )
 
-mars$finalmodel
-
 # SVM
 svm <- train(ph ~ .,
              data = train,
@@ -323,8 +321,6 @@ svm <- train(ph ~ .,
              tuneLength = 14,
              trControl = trainControl(method = 'cv')
              )
-
-svm$finalmodel
 
 # KNN
 set.seed(101)
@@ -336,21 +332,15 @@ knn <- train(ph ~ .,
              trControl = trainControl(method = 'cv')
              )
 
-knn$finalmodel
-
 # random forest
 rf <- randomForest(ph ~ .,
                    data = train,
                    ntrees = 1000)
 
-rf
-
 # cubist
 cubist <- train(ph ~ .,
                 data = train,
                 method = 'cubist')
-
-cubist$finalmodel
 ```
 
 #### Compare Models
