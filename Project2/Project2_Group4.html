@@ -541,341 +541,104 @@ mark {
 </div>
 <div id="data-processing" class="section level2">
 <h2>Data Processing</h2>
-<div id="dummy-variables" class="section level4">
-<h4>Dummy Variables</h4>
-<p>We’ll need to transform our categorical feature <code>brand_codes</code> into a dummy variable:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>dmy <span class="ot">&lt;-</span> <span class="fu">dummyVars</span>(<span class="sc">~</span>brand_code, <span class="at">data =</span> combined)</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>dmy_cols <span class="ot">&lt;-</span> <span class="fu">predict</span>(dmy, combined)</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># version 2 with brand code as dummy vars instead of factor</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>df2 <span class="ot">&lt;-</span> combined <span class="sc">%&gt;%</span> </span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cbind</span>(dmy_cols) <span class="sc">%&gt;%</span></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>brand_code)</span></code></pre></div>
-</div>
 <div id="data-imputation" class="section level4">
 <h4>Data Imputation</h4>
-<p>Earlier in our analysis, we saw that there were quite a few missing values. Before imputing data, we’ll first perform a Yeo-Johnson transformation (similar to BoxCox, but accepts negative values as well), then we’ll center and scale the data. Following our transformations, we’ll apply principal component analysis in an effort to remove collinearity. Finally, we’ll impute our missing values using KNN with 5 nearest neighbors:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>df_features <span class="ot">&lt;-</span> df2 <span class="sc">%&gt;%</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>ph) <span class="sc">%&gt;%</span> </span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>()</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>trans <span class="ot">&lt;-</span> caret<span class="sc">::</span><span class="fu">preProcess</span>(</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>  df_features, </span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">method =</span> <span class="fu">c</span>(<span class="st">&quot;YeoJohnson&quot;</span>, <span class="st">&quot;center&quot;</span>, <span class="st">&quot;scale&quot;</span>, <span class="st">&quot;pca&quot;</span>, <span class="st">&quot;knnImpute&quot;</span>), </span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">k =</span> <span class="dv">5</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>df_transformed <span class="ot">&lt;-</span> <span class="fu">predict</span>(trans, df_features)</span></code></pre></div>
-<p>Let’s see if we have any missing values in our data now:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">colSums</span>(<span class="fu">is.na</span>(df_transformed))</span></code></pre></div>
-<pre><code>## obs_type      PC1      PC2      PC3      PC4      PC5      PC6      PC7 
-##        0        0        0        0        0        0        0        0 
-##      PC8      PC9     PC10     PC11     PC12     PC13     PC14     PC15 
-##        0        0        0        0        0        0        0        0 
-##     PC16     PC17     PC18     PC19 
-##        0        0        0        0</code></pre>
+<p>We’ll need to impute missing data for both numeric and categorical variables. We’ll use the <code>knnImpute</code> method for the numeric variables and a multinomial logistic regression model to impute the <code>brand_code</code> variable.</p>
+<p>We do not use the combined dataset to train our model or impute values, under the assumption that this evaluation data is wouldn’t be available to us when training our models. In practice, when we’re faced with a new dataset, it would be impossible to use that data in the process of training our models.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># remove rows without a response variable</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>df3 <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(ph)) <span class="sc">%&gt;%</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">brand_code =</span> <span class="fu">factor</span>(brand_code))</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="co"># remove near zero variance variables</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>isNZV <span class="ot">&lt;-</span> <span class="fu">nearZeroVar</span>(df3)</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>df3 <span class="ot">&lt;-</span> df3[, <span class="sc">-</span>isNZV]</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="co"># imputing numeric variables</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>pp <span class="ot">&lt;-</span> df3 <span class="sc">%&gt;%</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">preProcess</span>(<span class="at">method =</span> <span class="st">&#39;knnImpute&#39;</span>)</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a><span class="co"># apply imputation of numeric variables</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>df3 <span class="ot">&lt;-</span> <span class="fu">predict</span>(pp, df3)</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a><span class="co"># remove rows without a brand code</span></span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>df3b <span class="ot">&lt;-</span> df3 <span class="sc">%&gt;%</span></span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(brand_code))</span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a><span class="co"># predict class using multinomial logistic regression</span></span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a>pc <span class="ot">&lt;-</span> <span class="fu">train</span>(brand_code <span class="sc">~</span> .,</span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>            <span class="at">data =</span> df3b,</span>
+<span id="cb10-25"><a href="#cb10-25" aria-hidden="true" tabindex="-1"></a>            <span class="at">method =</span> <span class="st">&#39;multinom&#39;</span>,</span>
+<span id="cb10-26"><a href="#cb10-26" aria-hidden="true" tabindex="-1"></a>            <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>, <span class="at">number =</span> <span class="dv">10</span>),</span>
+<span id="cb10-27"><a href="#cb10-27" aria-hidden="true" tabindex="-1"></a>            <span class="at">trace =</span> F)</span>
+<span id="cb10-28"><a href="#cb10-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-29"><a href="#cb10-29" aria-hidden="true" tabindex="-1"></a><span class="co"># create new field with predictions of brand code</span></span>
+<span id="cb10-30"><a href="#cb10-30" aria-hidden="true" tabindex="-1"></a>df3<span class="sc">$</span>brand2 <span class="ot">&lt;-</span> <span class="fu">predict</span>(pc, df3)</span>
+<span id="cb10-31"><a href="#cb10-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-32"><a href="#cb10-32" aria-hidden="true" tabindex="-1"></a><span class="co"># fill in missing brand codes with imputed values</span></span>
+<span id="cb10-33"><a href="#cb10-33" aria-hidden="true" tabindex="-1"></a>df3<span class="sc">$</span>brand_code <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="sc">!</span><span class="fu">is.na</span>(df3<span class="sc">$</span>brand_code), df3<span class="sc">$</span>brand_code, df3<span class="sc">$</span>brand2)</span>
+<span id="cb10-34"><a href="#cb10-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-35"><a href="#cb10-35" aria-hidden="true" tabindex="-1"></a><span class="co"># remove brand prediction field</span></span>
+<span id="cb10-36"><a href="#cb10-36" aria-hidden="true" tabindex="-1"></a>df3<span class="sc">$</span>brand2 <span class="ot">&lt;-</span> <span class="cn">NULL</span></span></code></pre></div>
 </div>
-<div id="baseline-model" class="section level3">
-<h3>Baseline Model</h3>
-<p>We’ll now run a baseline model that will be a starting point to measure all other models against. We’ve chosen a random forest model because as we noted above, there are outliers within our dataset, and tree methods are often robust against outliers. We are using the default parameters for this initial run:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>feature_df <span class="ot">&lt;-</span> df_transformed <span class="sc">%&gt;%</span> </span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(obs_type <span class="sc">==</span> <span class="st">&#39;train&#39;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>obs_type)</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>response_df <span class="ot">&lt;-</span> df_transformed <span class="sc">%&gt;%</span> </span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(obs_type <span class="sc">==</span> <span class="st">&#39;test&#39;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>obs_type)</span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>rfModel <span class="ot">&lt;-</span> <span class="fu">randomForest</span>(feature_df, response_df<span class="sc">$</span>ph)</span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>rfModel</span></code></pre></div>
-<pre><code>## 
-## Call:
-##  randomForest(x = feature_df, y = response_df$ph) 
-##                Type of random forest: unsupervised
-##                      Number of trees: 500
-## No. of variables tried at each split: 4</code></pre>
+<div id="train-test-split" class="section level4">
+<h4>Train Test Split</h4>
+<p>After imputing, we’ll be using caret’s <code>createDataPartition</code> to determine a stratified 80/20 split. Initially, we will use this one test dataset to evaluate all our models, however if two or more models have close error and variance measures, we can continue with cross validation on additional splits.</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>trainIndex <span class="ot">&lt;-</span>  <span class="fu">createDataPartition</span>(df3<span class="sc">$</span>ph,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">p =</span> <span class="fl">0.8</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">list =</span> F)</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> df3[trainIndex, ]</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>test <span class="ot">&lt;-</span> df3[<span class="sc">-</span>trainIndex, ]</span></code></pre></div>
 </div>
 </div>
-<div id="diverging-directions" class="section level2">
-<h2>Diverging directions</h2>
-<p>Hey so I’m not exactly sure we need to perform all those imputations for every type of model so I’m going to kind of go in a different direction here. I preserved the <code>df</code> object and diverted the code above starting at dummy vars to the <code>df2</code> object.</p>
-<p>Also, the training data wasn’t split into training and testing sets so we have no way to evaluate our models. I’m not exactly sure if it matters if we all use the same training and testing data since cross validation could be used, so we can discuss strategies next time we meet.</p>
-<div id="train-test-split" class="section level3">
-<h3>train test split</h3>
-<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># # distribution of brand codes</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="co"># table(train$brand_code) / nrow(train)</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co"># remove rows without a response variable or brand code</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>df3 <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span></span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(ph)) <span class="sc">%&gt;%</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">brand_code =</span> <span class="fu">factor</span>(brand_code))</span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="co"># isNZV &lt;- nearZeroVar(df3)</span></span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a><span class="co"># df3 &lt;- df3[, -isNZV]</span></span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a><span class="co"># pre process</span></span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>pp <span class="ot">&lt;-</span> df3 <span class="sc">%&gt;%</span></span>
-<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
-<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">preProcess</span>(<span class="at">method =</span> <span class="st">&#39;knnImpute&#39;</span>)</span>
-<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a>df3 <span class="ot">&lt;-</span> <span class="fu">predict</span>(pp, df3)</span>
-<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="fu">colSums</span>(<span class="fu">is.na</span>(df3))</span></code></pre></div>
-<pre><code>##        brand_code       carb_volume       fill_ounces         pc_volume 
-##               120                 0                 0                 0 
-##     carb_pressure         carb_temp               psc          psc_fill 
-##                 0                 0                 0                 0 
-##           psc_co2          mnf_flow    carb_pressure1     fill_pressure 
-##                 0                 0                 0                 0 
-##     hyd_pressure1     hyd_pressure2     hyd_pressure3     hyd_pressure4 
-##                 0                 0                 0                 0 
-##      filler_level      filler_speed       temperature        usage_cont 
-##                 0                 0                 0                 0 
-##         carb_flow           density               mfr           balling 
-##                 0                 0                 0                 0 
-##   pressure_vacuum                ph     oxygen_filler     bowl_setpoint 
-##                 0                 0                 0                 0 
-## pressure_setpoint     air_pressurer          alch_rel          carb_rel 
-##                 0                 0                 0                 0 
-##       balling_lvl 
-##                 0</code></pre>
-<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>df3b <span class="ot">&lt;-</span> df3 <span class="sc">%&gt;%</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(brand_code))</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>ctrl <span class="ot">&lt;-</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>, <span class="at">number =</span> <span class="dv">10</span>)</span>
+<div id="modeling" class="section level2">
+<h2>Modeling</h2>
+<p>We continue by fitting and tuning multiple models below. The goal is to see which one predicts with the lowest error and least variance on the test dataset.</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># MARS</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>marsGrid <span class="ot">&lt;-</span> <span class="fu">expand.grid</span>(<span class="at">.degree =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>, <span class="at">.nprune =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">38</span>)</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>mars <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>              <span class="at">data =</span> train,</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>              <span class="at">method =</span> <span class="st">&#39;earth&#39;</span>,</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>              <span class="at">tuneGrid =</span> marsGrid,</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>              <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>)</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>              )</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>mars<span class="sc">$</span>finalmodel</span></code></pre></div>
+<pre><code>## NULL</code></pre>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># SVM</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>svm <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">data =</span> train,</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">method =</span> <span class="st">&#39;svmRadial&#39;</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">preProc =</span> <span class="fu">c</span>(<span class="st">&#39;center&#39;</span>, <span class="st">&#39;scale&#39;</span>),</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">tuneLength =</span> <span class="dv">14</span>,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>)</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>             )</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>svm<span class="sc">$</span>finalmodel</span></code></pre></div>
+<pre><code>## NULL</code></pre>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># KNN</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>knn <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">data =</span> train,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">method =</span> <span class="st">&#39;knn&#39;</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">preProc =</span> <span class="fu">c</span>(<span class="st">&#39;center&#39;</span>, <span class="st">&#39;scale&#39;</span>),</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">tuneGrid =</span> <span class="fu">data.frame</span>(<span class="at">.k =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>),</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>             <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>)</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>             )</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>knn<span class="sc">$</span>finalmodel</span></code></pre></div>
+<pre><code>## NULL</code></pre>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># random forest</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>rf <span class="ot">&lt;-</span> <span class="fu">randomForest</span>(ph <span class="sc">~</span> .,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>                   <span class="at">data =</span> train,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>                   <span class="at">ntrees =</span> <span class="dv">1000</span>)</span>
 <span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="co"># predict class</span></span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>pc <span class="ot">&lt;-</span> <span class="fu">train</span>(brand_code <span class="sc">~</span> .,</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>            <span class="at">data =</span> df3b,</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>            <span class="at">method =</span> <span class="st">&#39;multinom&#39;</span>,</span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>            <span class="at">trControl =</span> ctrl,</span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>            <span class="at">trace =</span> F)</span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>df3<span class="sc">$</span>brand2 <span class="ot">&lt;-</span> <span class="fu">predict</span>(pc, df3)</span>
-<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>df3<span class="sc">$</span>brand_code <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="sc">!</span><span class="fu">is.na</span>(df3<span class="sc">$</span>brand_code), df3<span class="sc">$</span>brand_code, df3<span class="sc">$</span>brand2)</span>
-<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>df3<span class="sc">$</span>brand2 <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
-<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a><span class="fu">colSums</span>(<span class="fu">is.na</span>(df3))</span></code></pre></div>
-<pre><code>##        brand_code       carb_volume       fill_ounces         pc_volume 
-##                 0                 0                 0                 0 
-##     carb_pressure         carb_temp               psc          psc_fill 
-##                 0                 0                 0                 0 
-##           psc_co2          mnf_flow    carb_pressure1     fill_pressure 
-##                 0                 0                 0                 0 
-##     hyd_pressure1     hyd_pressure2     hyd_pressure3     hyd_pressure4 
-##                 0                 0                 0                 0 
-##      filler_level      filler_speed       temperature        usage_cont 
-##                 0                 0                 0                 0 
-##         carb_flow           density               mfr           balling 
-##                 0                 0                 0                 0 
-##   pressure_vacuum                ph     oxygen_filler     bowl_setpoint 
-##                 0                 0                 0                 0 
-## pressure_setpoint     air_pressurer          alch_rel          carb_rel 
-##                 0                 0                 0                 0 
-##       balling_lvl 
-##                 0</code></pre>
-<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>trainIndex <span class="ot">&lt;-</span>  <span class="fu">createDataPartition</span>(df3<span class="sc">$</span>ph,</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">p =</span> <span class="fl">0.8</span>,</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">list =</span> F)</span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> df3[trainIndex, ]</span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>test <span class="ot">&lt;-</span> df3[<span class="sc">-</span>trainIndex, ]</span></code></pre></div>
-</div>
-<div id="some-models" class="section level3">
-<h3>some models</h3>
-<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># MARS</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>marsGrid <span class="ot">&lt;-</span> <span class="fu">expand.grid</span>(<span class="at">.degree =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>, <span class="at">.nprune =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">38</span>)</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>mars <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>              <span class="at">data =</span> train,</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>              <span class="at">method =</span> <span class="st">&#39;earth&#39;</span>,</span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>              <span class="at">tuneGrid =</span> marsGrid,</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>              <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>)</span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>              )</span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>mars</span></code></pre></div>
-<pre><code>## Multivariate Adaptive Regression Spline 
-## 
-## 2055 samples
-##   32 predictor
-## 
-## No pre-processing
-## Resampling: Cross-Validated (10 fold) 
-## Summary of sample sizes: 1850, 1850, 1850, 1849, 1849, 1851, ... 
-## Resampling results across tuning parameters:
-## 
-##   degree  nprune  RMSE       Rsquared   MAE      
-##   1        2      0.8963230  0.2124403  0.7014570
-##   1        3      0.8727664  0.2534046  0.6853069
-##   1        4      0.8318129  0.3238279  0.6533962
-##   1        5      0.8211977  0.3413328  0.6432396
-##   1        6      0.8174393  0.3471526  0.6371516
-##   1        7      0.8048179  0.3655806  0.6250479
-##   1        8      0.7933052  0.3842278  0.6182157
-##   1        9      0.7875222  0.3936657  0.6129132
-##   1       10      0.7720683  0.4172325  0.6020485
-##   1       11      0.7642517  0.4290714  0.5959552
-##   1       12      0.7579905  0.4377839  0.5908836
-##   1       13      0.7567585  0.4393786  0.5901973
-##   1       14      0.7551657  0.4415226  0.5894109
-##   1       15      0.7556404  0.4408753  0.5881517
-##   1       16      0.7537874  0.4437061  0.5855897
-##   1       17      0.7531274  0.4447867  0.5848251
-##   1       18      0.7537099  0.4438202  0.5846182
-##   1       19      0.7537099  0.4438202  0.5846182
-##   1       20      0.7537099  0.4438202  0.5846182
-##   1       21      0.7537099  0.4438202  0.5846182
-##   1       22      0.7537099  0.4438202  0.5846182
-##   1       23      0.7537099  0.4438202  0.5846182
-##   1       24      0.7537099  0.4438202  0.5846182
-##   1       25      0.7537099  0.4438202  0.5846182
-##   1       26      0.7537099  0.4438202  0.5846182
-##   1       27      0.7537099  0.4438202  0.5846182
-##   1       28      0.7537099  0.4438202  0.5846182
-##   1       29      0.7537099  0.4438202  0.5846182
-##   1       30      0.7537099  0.4438202  0.5846182
-##   1       31      0.7537099  0.4438202  0.5846182
-##   1       32      0.7537099  0.4438202  0.5846182
-##   1       33      0.7537099  0.4438202  0.5846182
-##   1       34      0.7537099  0.4438202  0.5846182
-##   1       35      0.7537099  0.4438202  0.5846182
-##   1       36      0.7537099  0.4438202  0.5846182
-##   1       37      0.7537099  0.4438202  0.5846182
-##   1       38      0.7537099  0.4438202  0.5846182
-##   2        2      0.9026818  0.2025752  0.7044716
-##   2        3      0.8813698  0.2411086  0.6900362
-##   2        4      0.8512137  0.2949668  0.6674091
-##   2        5      0.8330502  0.3244902  0.6466707
-##   2        6      0.8197166  0.3442491  0.6328100
-##   2        7      0.8089110  0.3625065  0.6212573
-##   2        8      0.8016705  0.3728227  0.6181501
-##   2        9      0.7840981  0.3987352  0.6009161
-##   2       10      0.7803163  0.4047835  0.5950812
-##   2       11      0.7790847  0.4078388  0.5937607
-##   2       12      0.7694685  0.4214609  0.5889967
-##   2       13      0.7643665  0.4291399  0.5856587
-##   2       14      0.7536811  0.4443342  0.5772065
-##   2       15      0.7483666  0.4518712  0.5702265
-##   2       16      0.7450539  0.4564128  0.5664628
-##   2       17      0.7412972  0.4619627  0.5629881
-##   2       18      0.7381386  0.4662711  0.5594058
-##   2       19      0.7331595  0.4736048  0.5559744
-##   2       20      0.7313461  0.4763197  0.5536778
-##   2       21      0.7332244  0.4743788  0.5541996
-##   2       22      0.7299943  0.4786666  0.5536413
-##   2       23      0.7291322  0.4801173  0.5529678
-##   2       24      0.7265760  0.4840441  0.5513082
-##   2       25      0.7256818  0.4852047  0.5498832
-##   2       26      0.7248319  0.4865197  0.5490168
-##   2       27      0.7244491  0.4869608  0.5483318
-##   2       28      0.7243044  0.4871812  0.5479573
-##   2       29      0.7242995  0.4870066  0.5477011
-##   2       30      0.7244676  0.4868570  0.5479865
-##   2       31      0.7244107  0.4868471  0.5482918
-##   2       32      0.7244253  0.4868463  0.5485187
-##   2       33      0.7244910  0.4867849  0.5489760
-##   2       34      0.7244910  0.4867849  0.5489760
-##   2       35      0.7244910  0.4867849  0.5489760
-##   2       36      0.7244910  0.4867849  0.5489760
-##   2       37      0.7244910  0.4867849  0.5489760
-##   2       38      0.7244910  0.4867849  0.5489760
-## 
-## RMSE was used to select the optimal model using the smallest value.
-## The final values used for the model were nprune = 29 and degree = 2.</code></pre>
-<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># SVM</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>svm <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">data =</span> train,</span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">method =</span> <span class="st">&#39;svmRadial&#39;</span>,</span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">preProc =</span> <span class="fu">c</span>(<span class="st">&#39;center&#39;</span>, <span class="st">&#39;scale&#39;</span>),</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">tuneLength =</span> <span class="dv">14</span>,</span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>)</span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>             )</span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>svm</span></code></pre></div>
-<pre><code>## Support Vector Machines with Radial Basis Function Kernel 
-## 
-## 2055 samples
-##   32 predictor
-## 
-## Pre-processing: centered (32), scaled (32) 
-## Resampling: Cross-Validated (10 fold) 
-## Summary of sample sizes: 1850, 1851, 1850, 1849, 1849, 1848, ... 
-## Resampling results across tuning parameters:
-## 
-##   C        RMSE       Rsquared   MAE      
-##      0.25  0.7562439  0.4519352  0.5635541
-##      0.50  0.7368109  0.4749093  0.5436801
-##      1.00  0.7232859  0.4920073  0.5296703
-##      2.00  0.7153429  0.5023130  0.5232696
-##      4.00  0.7099234  0.5102564  0.5213245
-##      8.00  0.7106928  0.5126816  0.5239887
-##     16.00  0.7121732  0.5167680  0.5247287
-##     32.00  0.7278306  0.5065171  0.5347307
-##     64.00  0.7561722  0.4848671  0.5539161
-##    128.00  0.7913298  0.4581848  0.5754262
-##    256.00  0.8396703  0.4258368  0.6112329
-##    512.00  0.8746532  0.4035204  0.6375252
-##   1024.00  0.8934317  0.3911980  0.6503508
-##   2048.00  0.8941234  0.3906169  0.6507165
-## 
-## Tuning parameter &#39;sigma&#39; was held constant at a value of 0.02100694
-## RMSE was used to select the optimal model using the smallest value.
-## The final values used for the model were sigma = 0.02100694 and C = 4.</code></pre>
-<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># KNN</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>knn <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">data =</span> train,</span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">method =</span> <span class="st">&#39;knn&#39;</span>,</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">preProc =</span> <span class="fu">c</span>(<span class="st">&#39;center&#39;</span>, <span class="st">&#39;scale&#39;</span>),</span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">tuneGrid =</span> <span class="fu">data.frame</span>(<span class="at">.k =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>),</span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>             <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>)</span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>             )</span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>knn</span></code></pre></div>
-<pre><code>## k-Nearest Neighbors 
-## 
-## 2055 samples
-##   32 predictor
-## 
-## Pre-processing: centered (32), scaled (32) 
-## Resampling: Cross-Validated (10 fold) 
-## Summary of sample sizes: 1850, 1850, 1850, 1849, 1849, 1851, ... 
-## Resampling results across tuning parameters:
-## 
-##   k   RMSE       Rsquared   MAE      
-##    1  0.9233538  0.3299902  0.6252921
-##    2  0.8120285  0.3980938  0.5818199
-##    3  0.7736347  0.4323608  0.5612288
-##    4  0.7559546  0.4501708  0.5532766
-##    5  0.7493556  0.4566132  0.5525600
-##    6  0.7459176  0.4607156  0.5526334
-##    7  0.7457891  0.4618174  0.5529314
-##    8  0.7456261  0.4621486  0.5533639
-##    9  0.7477153  0.4598052  0.5573717
-##   10  0.7491066  0.4590327  0.5593050
-##   11  0.7526725  0.4539441  0.5624825
-##   12  0.7552074  0.4501248  0.5654680
-##   13  0.7568245  0.4483401  0.5678809
-##   14  0.7563725  0.4489561  0.5698876
-##   15  0.7605929  0.4431689  0.5747236
-##   16  0.7601067  0.4443713  0.5732313
-##   17  0.7634474  0.4397197  0.5767727
-##   18  0.7648426  0.4384181  0.5796856
-##   19  0.7675807  0.4346715  0.5828953
-##   20  0.7700032  0.4311394  0.5849068
-## 
-## RMSE was used to select the optimal model using the smallest value.
-## The final value used for the model was k = 8.</code></pre>
-<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># random forest</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>rf <span class="ot">&lt;-</span> <span class="fu">randomForest</span>(ph <span class="sc">~</span> .,</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>                   <span class="at">data =</span> train,</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>                   <span class="at">ntrees =</span> <span class="dv">1000</span>)</span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>rf</span></code></pre></div>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>rf</span></code></pre></div>
 <pre><code>## 
 ## Call:
 ##  randomForest(formula = ph ~ ., data = train, ntrees = 1000) 
@@ -883,61 +646,92 @@ mark {
 ##                      Number of trees: 500
 ## No. of variables tried at each split: 10
 ## 
-##           Mean of squared residuals: 0.3437143
-##                     % Var explained: 66.29</code></pre>
-<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># cubist</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>cubist <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>                <span class="at">data =</span> train,</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>                <span class="at">method =</span> <span class="st">&#39;cubist&#39;</span>)</span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>cubist</span></code></pre></div>
-<pre><code>## Cubist 
-## 
-## 2055 samples
-##   32 predictor
-## 
-## No pre-processing
-## Resampling: Bootstrapped (25 reps) 
-## Summary of sample sizes: 2055, 2055, 2055, 2055, 2055, 2055, ... 
-## Resampling results across tuning parameters:
-## 
-##   committees  neighbors  RMSE       Rsquared   MAE      
-##    1          0          0.8862887  0.3827760  0.5922828
-##    1          5          0.8848970  0.3999767  0.5870761
-##    1          9          0.8817293  0.3972707  0.5851386
-##   10          0          0.6324724  0.6007064  0.4545420
-##   10          5          0.6277658  0.6106366  0.4460561
-##   10          9          0.6263097  0.6108041  0.4461422
-##   20          0          0.6055257  0.6322357  0.4370008
-##   20          5          0.6002296  0.6399796  0.4278324
-##   20          9          0.5989485  0.6407385  0.4281733
-## 
-## RMSE was used to select the optimal model using the smallest value.
-## The final values used for the model were committees = 20 and neighbors = 9.</code></pre>
+##           Mean of squared residuals: 0.3460083
+##                     % Var explained: 66.07</code></pre>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># cubist</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>cubist <span class="ot">&lt;-</span> <span class="fu">train</span>(ph <span class="sc">~</span> .,</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>                <span class="at">data =</span> train,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>                <span class="at">method =</span> <span class="st">&#39;cubist&#39;</span>)</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>cubist<span class="sc">$</span>finalmodel</span></code></pre></div>
+<pre><code>## NULL</code></pre>
+<div id="compare-models" class="section level4">
+<h4>Compare Models</h4>
+<p>In order to evaluate the predictive power of each of the models, we’ll use <code>postResample</code> to measure the error between each of the model’s predictions and the holdout test data.</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># predictions</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>mars <span class="ot">&lt;-</span> <span class="fu">predict</span>(mars, test)</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>svm <span class="ot">&lt;-</span> <span class="fu">predict</span>(svm, test)</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>knn <span class="ot">&lt;-</span> <span class="fu">predict</span>(knn, test)</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>rf <span class="ot">&lt;-</span> <span class="fu">predict</span>(rf, test)</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>cubist <span class="ot">&lt;-</span> <span class="fu">predict</span>(cubist, test)</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="co"># measure of error and variance</span></span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="fu">rbind</span>(</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>mars, <span class="at">obs =</span> test<span class="sc">$</span>ph),</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>svm, <span class="at">obs =</span> test<span class="sc">$</span>ph),</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>knn, <span class="at">obs =</span> test<span class="sc">$</span>ph),</span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>rf, <span class="at">obs =</span> test<span class="sc">$</span>ph),</span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>cubist, <span class="at">obs =</span> test<span class="sc">$</span>ph)</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>),</span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="fu">c</span>(<span class="st">&#39;MARS&#39;</span>, <span class="st">&#39;SVM&#39;</span>, <span class="st">&#39;KNN&#39;</span>, <span class="st">&#39;Random Forest&#39;</span>, <span class="st">&#39;Cubist&#39;</span>)</span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<pre><code>##                    RMSE  Rsquared       MAE
+## MARS          0.6972039 0.4737391 0.5321751
+## SVM           0.6375411 0.5610928 0.4663123
+## KNN           0.6852058 0.4988402 0.5158030
+## Random Forest 0.5489842 0.6908398 0.4046192
+## Cubist        0.5442590 0.6792009 0.3908086</code></pre>
 </div>
-<div id="compare-models" class="section level3">
-<h3>Compare Models</h3>
-<div class="sourceCode" id="cb31"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>mars <span class="ot">&lt;-</span> <span class="fu">predict</span>(mars, test)</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>svm <span class="ot">&lt;-</span> <span class="fu">predict</span>(svm, test)</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>knn <span class="ot">&lt;-</span> <span class="fu">predict</span>(knn, test)</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>rf <span class="ot">&lt;-</span> <span class="fu">predict</span>(rf, test)</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>test<span class="sc">$</span>cubist <span class="ot">&lt;-</span> <span class="fu">predict</span>(cubist, test)</span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a><span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>mars, <span class="at">obs =</span> test<span class="sc">$</span>ph)</span></code></pre></div>
-<pre><code>##      RMSE  Rsquared       MAE 
-## 0.6929350 0.4823021 0.5378361</code></pre>
-<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>svm, <span class="at">obs =</span> test<span class="sc">$</span>ph)</span></code></pre></div>
-<pre><code>##      RMSE  Rsquared       MAE 
-## 0.6372825 0.5620221 0.4616334</code></pre>
-<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>knn, <span class="at">obs =</span> test<span class="sc">$</span>ph)</span></code></pre></div>
-<pre><code>##      RMSE  Rsquared       MAE 
-## 0.6575282 0.5377469 0.4944149</code></pre>
-<div class="sourceCode" id="cb37"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>rf, <span class="at">obs =</span> test<span class="sc">$</span>ph)</span></code></pre></div>
-<pre><code>##      RMSE  Rsquared       MAE 
-## 0.5441947 0.6948714 0.3991946</code></pre>
-<div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="fu">postResample</span>(<span class="at">pred =</span> test<span class="sc">$</span>cubist, <span class="at">obs =</span> test<span class="sc">$</span>ph)</span></code></pre></div>
-<pre><code>##      RMSE  Rsquared       MAE 
-## 0.5346066 0.6895299 0.3868027</code></pre>
+<div id="variable-importance" class="section level4">
+<h4>Variable Importance</h4>
+<p>Here, we’ll take the best performing models and make note of any similarities in the most important variables. If any of the top variables had shown collinearity with other variables, it’s possible that the variable importance is misstated and split amongst the correlated variables.</p>
+</div>
+</div>
+<div id="wrapping-up" class="section level2">
+<h2>Wrapping Up</h2>
+<div id="imputing-evaluation-data" class="section level4">
+<h4>Imputing Evaluation Data</h4>
+<p>We also need to impute missing data on the final evaluation data. We’ll need to train another multinomial logistic regression model for brand code, excluding pH, and use <code>knnImpute</code> again for the numeric variables. We’ll be using the entire combined dataset to impute these values under the assumption that we have trained our models on existing data and can leverage that to help us get a more accurate insight into the true population distributions.</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># get all data excluding ph</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>eval2 <span class="ot">&lt;-</span> combined <span class="sc">%&gt;%</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>ph)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="co"># convert brand code to factor</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>eval2<span class="sc">$</span>brand_code <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(eval2<span class="sc">$</span>brand_code)</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="co"># pre process evaluation data</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>ppe <span class="ot">&lt;-</span> eval2 <span class="sc">%&gt;%</span></span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">preProcess</span>(<span class="at">method =</span> <span class="st">&#39;knnImpute&#39;</span>)</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a><span class="co"># apply imputation of numeric variables</span></span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>eval2 <span class="ot">&lt;-</span> <span class="fu">predict</span>(ppe, eval2)</span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a><span class="co"># remove rows without a brand code</span></span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>eval2b <span class="ot">&lt;-</span> eval2 <span class="sc">%&gt;%</span></span>
+<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(brand_code))</span>
+<span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a><span class="co"># predict class using multinomial logistic regression, excluding pH</span></span>
+<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>pc2 <span class="ot">&lt;-</span> <span class="fu">train</span>(brand_code <span class="sc">~</span> .,</span>
+<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>            <span class="at">data =</span> eval2b,</span>
+<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>            <span class="at">method =</span> <span class="st">&#39;multinom&#39;</span>,</span>
+<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a>            <span class="at">trControl =</span> <span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">&#39;cv&#39;</span>, <span class="at">number =</span> <span class="dv">10</span>),</span>
+<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a>            <span class="at">trace =</span> F)</span>
+<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a><span class="co"># create new field with predictions of brand code</span></span>
+<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a>eval2<span class="sc">$</span>brand2 <span class="ot">&lt;-</span> <span class="fu">predict</span>(pc2, eval2)</span>
+<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a><span class="co"># fill in missing brand codes with imputed values</span></span>
+<span id="cb24-32"><a href="#cb24-32" aria-hidden="true" tabindex="-1"></a>eval2<span class="sc">$</span>brand_code <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="sc">!</span><span class="fu">is.na</span>(eval2<span class="sc">$</span>brand_code), eval2<span class="sc">$</span>brand_code, eval2<span class="sc">$</span>brand2)</span>
+<span id="cb24-33"><a href="#cb24-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-34"><a href="#cb24-34" aria-hidden="true" tabindex="-1"></a><span class="co"># remove brand prediction field</span></span>
+<span id="cb24-35"><a href="#cb24-35" aria-hidden="true" tabindex="-1"></a>eval2<span class="sc">$</span>brand2 <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb24-36"><a href="#cb24-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-37"><a href="#cb24-37" aria-hidden="true" tabindex="-1"></a><span class="co"># isolate evaluation data only</span></span>
+<span id="cb24-38"><a href="#cb24-38" aria-hidden="true" tabindex="-1"></a>eval2 <span class="ot">&lt;-</span> eval2 <span class="sc">%&gt;%</span></span>
+<span id="cb24-39"><a href="#cb24-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(obs_type <span class="sc">==</span> <span class="st">&#39;test&#39;</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb24-40"><a href="#cb24-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>obs_type)</span></code></pre></div>
 </div>
 </div>
 

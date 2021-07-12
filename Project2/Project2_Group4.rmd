@@ -238,114 +238,56 @@ We see many of our features are *highly* correlated. There are several methods w
 
 ## Data Processing
 
-#### Dummy Variables
-
-We'll need to transform our categorical feature `brand_codes` into a dummy variable: 
-
-```{r}
-dmy <- dummyVars(~brand_code, data = combined)
-dmy_cols <- predict(dmy, combined)
-
-# version 2 with brand code as dummy vars instead of factor
-df2 <- combined %>% 
-  cbind(dmy_cols) %>%
-  select(-brand_code)
-```
-
 #### Data Imputation
 
-Earlier in our analysis, we saw that there were quite a few missing values. Before imputing data, we'll first perform a Yeo-Johnson transformation (similar to BoxCox, but accepts negative values as well), then we'll center and scale the data. Following our transformations, we'll apply principal component analysis in an effort to remove collinearity. Finally, we'll impute our missing values using KNN with 5 nearest neighbors:  
+We'll need to impute missing data for both numeric and categorical variables. We'll use the `knnImpute` method for the numeric variables and a multinomial logistic regression model to impute the `brand_code` variable. 
 
-```{r message=FALSE, warning=FALSE}
-df_features <- df2 %>%
-  select(-ph) %>% 
-  data.frame()
-
-trans <- caret::preProcess(
-  df_features, 
-  method = c("YeoJohnson", "center", "scale", "pca", "knnImpute"), 
-  k = 5
-  )
-
-df_transformed <- predict(trans, df_features)
-```
-
-
-
-Let's see if we have any missing values in our data now: 
+We do not use the combined dataset to train our model or impute values, under the assumption that this evaluation data is wouldn't be available to us when training our models. In practice, when we're faced with a new dataset, it would be impossible to use that data in the process of training our models.
 
 ```{r}
-colSums(is.na(df_transformed))
-```
-
-### Baseline Model
-
-We'll now run a baseline model that will be a starting point to measure all other models against. We've chosen a random forest model because as we noted above, there are outliers within our dataset, and tree methods are often robust against outliers. We are using the default parameters for this initial run: 
-
-```{r}
-feature_df <- df_transformed %>% 
-  filter(obs_type == 'train') %>% 
-  select(-obs_type)
-
-response_df <- df_transformed %>% 
-  filter(obs_type == 'test') %>% 
-  select(-obs_type)
-
-rfModel <- randomForest(feature_df, response_df$ph)
-rfModel
-```
-
-
-## Diverging directions
-
-Hey so I'm not exactly sure we need to perform all those imputations for every type of model so I'm going to kind of go in a different direction here. I preserved the `df` object and diverted the code above starting at dummy vars to the `df2` object.
-
-Also, the training data wasn't split into training and testing sets so we have no way to evaluate our models. I'm not exactly sure if it matters if we all use the same training and testing data since cross validation could be used, so we can discuss strategies next time we meet.
-
-
-### train test split
-
-```{r}
-# # distribution of brand codes
-# table(train$brand_code) / nrow(train)
-
-# remove rows without a response variable or brand code
+# remove rows without a response variable
 df3 <- df %>%
   filter(!is.na(ph)) %>%
   mutate(brand_code = factor(brand_code))
 
-# isNZV <- nearZeroVar(df3)
-# df3 <- df3[, -isNZV]
+# remove near zero variance variables
+isNZV <- nearZeroVar(df3)
+df3 <- df3[, -isNZV]
 
-# pre process
+# imputing numeric variables
 pp <- df3 %>%
   as.data.frame() %>%
   preProcess(method = 'knnImpute')
 
+# apply imputation of numeric variables
 df3 <- predict(pp, df3)
 
-colSums(is.na(df3))
-
+# remove rows without a brand code
 df3b <- df3 %>%
   filter(!is.na(brand_code))
 
-ctrl <- trainControl(method = 'cv', number = 10)
-
-# predict class
+# predict class using multinomial logistic regression
 pc <- train(brand_code ~ .,
             data = df3b,
             method = 'multinom',
-            trControl = ctrl,
+            trControl = trainControl(method = 'cv', number = 10),
             trace = F)
 
+# create new field with predictions of brand code
 df3$brand2 <- predict(pc, df3)
 
+# fill in missing brand codes with imputed values
 df3$brand_code <- ifelse(!is.na(df3$brand_code), df3$brand_code, df3$brand2)
 
+# remove brand prediction field
 df3$brand2 <- NULL
+```
 
-colSums(is.na(df3))
+#### Train Test Split
 
+After imputing, we'll be using caret's `createDataPartition` to determine a stratified 80/20 split. Initially, we will use this one test dataset to evaluate all our models, however if two or more models have close error and variance measures, we can continue with cross validation on additional splits.
+
+```{r}
 set.seed(101)
 trainIndex <-  createDataPartition(df3$ph,
                                    p = 0.8,
@@ -355,7 +297,9 @@ train <- df3[trainIndex, ]
 test <- df3[-trainIndex, ]
 ```
 
-### some models
+## Modeling
+
+We continue by fitting and tuning multiple models below. The goal is to see which one predicts with the lowest error and least variance on the test dataset.
 
 ```{r}
 # MARS
@@ -369,7 +313,7 @@ mars <- train(ph ~ .,
               trControl = trainControl(method = 'cv')
               )
 
-mars
+mars$finalmodel
 
 # SVM
 svm <- train(ph ~ .,
@@ -380,7 +324,7 @@ svm <- train(ph ~ .,
              trControl = trainControl(method = 'cv')
              )
 
-svm
+svm$finalmodel
 
 # KNN
 set.seed(101)
@@ -392,7 +336,7 @@ knn <- train(ph ~ .,
              trControl = trainControl(method = 'cv')
              )
 
-knn
+knn$finalmodel
 
 # random forest
 rf <- randomForest(ph ~ .,
@@ -406,27 +350,85 @@ cubist <- train(ph ~ .,
                 data = train,
                 method = 'cubist')
 
-cubist
+cubist$finalmodel
 ```
 
-### Compare Models
+#### Compare Models
+
+In order to evaluate the predictive power of each of the models, we'll use `postResample` to measure the error between each of the model's predictions and the holdout test data.
 
 ```{r}
+# predictions
 test$mars <- predict(mars, test)
 test$svm <- predict(svm, test)
 test$knn <- predict(knn, test)
 test$rf <- predict(rf, test)
 test$cubist <- predict(cubist, test)
 
-postResample(pred = test$mars, obs = test$ph)
-postResample(pred = test$svm, obs = test$ph)
-postResample(pred = test$knn, obs = test$ph)
-postResample(pred = test$rf, obs = test$ph)
-postResample(pred = test$cubist, obs = test$ph)
+# measure of error and variance
+data.frame(rbind(
+  postResample(pred = test$mars, obs = test$ph),
+  postResample(pred = test$svm, obs = test$ph),
+  postResample(pred = test$knn, obs = test$ph),
+  postResample(pred = test$rf, obs = test$ph),
+  postResample(pred = test$cubist, obs = test$ph)
+),
+  row.names = c('MARS', 'SVM', 'KNN', 'Random Forest', 'Cubist')
+)
 ```
 
+#### Variable Importance
+
+Here, we'll take the best performing models and make note of any similarities in the most important variables. If any of the top variables had shown collinearity with other variables, it's possible that the variable importance is misstated and split amongst the correlated variables.
+
+## Wrapping Up
+
+#### Imputing Evaluation Data
+
+We also need to impute missing data on the final evaluation data. We'll need to train another multinomial logistic regression model for brand code, excluding pH, and use `knnImpute` again for the numeric variables. We'll be using the entire combined dataset to impute these values under the assumption that we have trained our models on existing data and can leverage that to help us get a more accurate insight into the true population distributions.
+
+```{r}
+# get all data excluding ph
+eval2 <- combined %>%
+  select(-ph)
+
+# convert brand code to factor
+eval2$brand_code <- as.factor(eval2$brand_code)
+
+# pre process evaluation data
+ppe <- eval2 %>%
+  as.data.frame() %>%
+  preProcess(method = 'knnImpute')
+
+# apply imputation of numeric variables
+eval2 <- predict(ppe, eval2)
 
 
+# remove rows without a brand code
+eval2b <- eval2 %>%
+  filter(!is.na(brand_code))
+
+# predict class using multinomial logistic regression, excluding pH
+pc2 <- train(brand_code ~ .,
+            data = eval2b,
+            method = 'multinom',
+            trControl = trainControl(method = 'cv', number = 10),
+            trace = F)
+
+# create new field with predictions of brand code
+eval2$brand2 <- predict(pc2, eval2)
+
+# fill in missing brand codes with imputed values
+eval2$brand_code <- ifelse(!is.na(eval2$brand_code), eval2$brand_code, eval2$brand2)
+
+# remove brand prediction field
+eval2$brand2 <- NULL
+
+# isolate evaluation data only
+eval2 <- eval2 %>%
+  filter(obs_type == 'test') %>%
+  select(-obs_type)
+```
 
 
 
