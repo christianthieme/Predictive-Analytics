@@ -20,31 +20,25 @@ output:
 
 ```{=html}
 <style type="text/css">
-
 code {
   font-family: "Consolas";
   font-size: 11px;
 }
-
 pre {
   font-family: "Consolas";
   font-size: 11px;
 }
-
 mark {
   background-color: whitesmoke;
   color: black;
 }
-
 </style>
 ```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning=F, message=F)
-
 options(scipen = 9)
 set.seed(101)
-
 library(fpp2)
 library(ggplot2)
 library(tidyr)
@@ -62,6 +56,10 @@ library(caret)
 library(fpp3)
 library(randomForest)
 library(Cubist)
+library(iterators)
+library(parallel)
+library(doMC)
+library(knitr)
 ```
 
 <font size="3">Group Members</font>
@@ -82,30 +80,21 @@ We'll begin by reading in the dataset and looking at each column's data type:
 
 ```{r}
 data_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentData%20-%20TO%20MODEL.csv')
-
 data_raw$obs_type <- "train"
-
 eval_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentEvaluation-%20TO%20PREDICT.csv')
-
 eval_raw$obs_type <- "test"
-
 combined <- data_raw %>%
   rbind(eval_raw)
-
 # convert column names to all lowercase
 names(combined) <- lapply(names(combined), tolower)
-
 # convert column name spaces to underscore
 names(combined) <- str_replace_all(names(combined), ' ', '_')
-
 df <- combined %>%
   filter(obs_type == 'train') %>%
   select(-obs_type)
-
 eval <- combined %>%
   filter(obs_type == 'test') %>%
   select(-obs_type)
-
 glimpse(combined)
 ```
 We see that all columns, with the exception of `brand`, are doubles and continuous. Excluding the response variable, this means that we have 1 categorical variable and 31 continuous variables to work with. 
@@ -160,7 +149,6 @@ df %>%
     panel.grid.minor.y = element_blank(),
     panel.grid.minor.x = element_blank()
   )
-
 ```
 
 Breaking down to this further grain does not seem to be much more helpful. There may be even more granular sub-populations within this data that we are not seeing. 
@@ -254,12 +242,9 @@ For many models, correlation between features can be an issue. Let's see what th
 ```{r fig.height=12, fig.width=12}
 numeric_values <- df %>% 
   dplyr::select_if(is.numeric)
-
 numeric_values <- numeric_values[complete.cases(numeric_values),] %>% 
   data.frame()
-
 train_cor <- cor(numeric_values)
-
 corrplot::corrplot.mixed(train_cor, tl.col = 'black', tl.pos = 'lt')
 ```
 
@@ -286,36 +271,28 @@ We do not use the combined dataset to train our model or impute values, under th
 df3 <- df %>%
   filter(!is.na(ph)) %>%
   mutate(brand_code = factor(brand_code))
-
 # remove near zero variance variables
 isNZV <- nearZeroVar(df3)
 df3 <- df3[, -isNZV]
-
 # imputing numeric variables
 pp <- df3 %>%
   as.data.frame() %>%
   preProcess(method = 'knnImpute')
-
 # apply imputation of numeric variables
 df3 <- predict(pp, df3)
-
 # remove rows without a brand code
 df3b <- df3 %>%
   filter(!is.na(brand_code))
-
 # predict class using multinomial logistic regression
 pc <- train(brand_code ~ .,
             data = df3b,
             method = 'multinom',
             trControl = trainControl(method = 'cv', number = 10),
             trace = F)
-
 # create new field with predictions of brand code
 df3$brand2 <- predict(pc, df3)
-
 # fill in missing brand codes with imputed values
 df3$brand_code <- ifelse(!is.na(df3$brand_code), df3$brand_code, df3$brand2)
-
 # remove brand prediction field
 df3$brand2 <- NULL
 ```
@@ -329,7 +306,6 @@ set.seed(101)
 trainIndex <-  createDataPartition(df3$ph,
                                    p = 0.8,
                                    list = F)
-
 train <- df3[trainIndex, ]
 test <- df3[-trainIndex, ]
 ```
@@ -350,7 +326,6 @@ As part of our training, we are using cross fold validation in an effort to sele
 ```{r}
 # MARS
 marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
-
 set.seed(101)
 mars <- train(ph ~ .,
               data = train,
@@ -358,7 +333,6 @@ mars <- train(ph ~ .,
               tuneGrid = marsGrid,
               trControl = trainControl(method = 'cv')
               )
-
 # SVM
 svm <- train(ph ~ .,
              data = train,
@@ -367,7 +341,6 @@ svm <- train(ph ~ .,
              tuneLength = 14,
              trControl = trainControl(method = 'cv')
              )
-
 # KNN
 set.seed(101)
 knn <- train(ph ~ .,
@@ -377,16 +350,75 @@ knn <- train(ph ~ .,
              tuneGrid = data.frame(.k = 1:20),
              trControl = trainControl(method = 'cv')
              )
-
 # random forest
 rf <- randomForest(ph ~ .,
                    data = train,
                    ntrees = 1000)
-
 # cubist
 cubist <- train(ph ~ .,
                 data = train,
                 method = 'cubist')
+
+```
+
+```{r, eval=FALSE, include=TRUE}
+#Avg Neural Nets
+set.seed(100)
+
+
+trainingData  <- select(train, -ph)
+trainingData <- data.frame(trainingData)
+testData  <- select(test, -ph)
+testData <- data.frame(testData)
+
+neural_model <- expand.grid(.decay = c(0, 0.01, .1),
+                        .size = c(1:10),
+                        .bag = FALSE)
+
+# get the maximum number of hidden units
+maxSize <- max(neural_model$.size)
+# there are M(p+1)+M+1 parameters in total
+numWts <- 1*(maxSize * (length(trainingData) + 1) + maxSize + 1)
+
+ctrl <- trainControl(method = "cv")
+
+avNNet_model <- train(trainingData, train$ph,
+                 method = "avNNet",
+                 tuneGrid = neural_model,
+                 trControl = ctrl,
+                 preProcess = c("center", "scale"),
+                 linout = TRUE,
+                 trace = FALSE,
+                 maxit = 500,
+                 MaxNWts = numWts
+                 )
+
+plot(avNNet_model)
+```
+
+```{r, echo=FALSE}
+
+download.file(
+    url='https://raw.githubusercontent.com/SubhalaxmiRout002/DATA624/main/Project2/Screen%20Shot%202021-07-14%20at%203.06.44%20PM.png',
+    destfile='image1.png',
+    mode='wb')
+knitr::include_graphics(path='image1.png')
+```
+
+The results show that the optimum number of hidden units is 8 and the decay parameter is 0.1.
+
+```{r, eval=FALSE, include=TRUE}
+avNNet_predict <- predict(avNNet_model, newdata = testData)
+avNNet_results <- postResample(pred = avNNet_predict, obs = test$ph)
+avNNet_results
+```
+
+```{r, echo=FALSE}
+download.file(
+    url='https://raw.githubusercontent.com/SubhalaxmiRout002/DATA624/main/Project2/Screen%20Shot%202021-07-14%20at%203.07.00%20PM.png',
+    destfile='image2.png',
+    mode='wb')
+knitr::include_graphics(path='image2.png')
 ```
 
 #### Compare Models
@@ -411,7 +443,6 @@ metrics <- data.frame(rbind(
 ),
   row.names = c('MARS', 'SVM', 'KNN', 'Random Forest', 'Cubist')
 )
-
 ```
 
 
@@ -423,7 +454,7 @@ metrics <- data.frame(rbind(
 | KNN        | `r metrics[3,1]` | `r metrics[3,2]` | `r metrics[3,3]` |
 | RF         | `r metrics[4,1]` | `r metrics[4,2]` | `r metrics[4,3]` |
 | Cubist     | `r metrics[5,1]` | `r metrics[5,2]` | `r metrics[5,3]` |
-| NN         | xxxxxxxxx        | xxxxxxxxx        | xxxxxxxxx        |
+| Neural Nets|    0.6246003     |     0.5758669    |    0.4811444     |
 
 
 Based on the model results above, we have chosen the Cubist model as our final model. The cubist model has the lowest RMSE and MAE values as well as the highest $R^2$ values. 
@@ -445,39 +476,29 @@ We'll need to impute missing data on the final evaluation data. To do this, we'l
 # get all data excluding ph
 eval2 <- combined %>%
   select(-ph)
-
 # convert brand code to factor
 eval2$brand_code <- as.factor(eval2$brand_code)
-
 # pre process evaluation data
 ppe <- eval2 %>%
   as.data.frame() %>%
   preProcess(method = 'knnImpute')
-
 # apply imputation of numeric variables
 eval2 <- predict(ppe, eval2)
-
-
 # remove rows without a brand code
 eval2b <- eval2 %>%
   filter(!is.na(brand_code))
-
 # predict class using multinomial logistic regression, excluding pH
 pc2 <- train(brand_code ~ .,
             data = eval2b,
             method = 'multinom',
             trControl = trainControl(method = 'cv', number = 10),
             trace = F)
-
 # create new field with predictions of brand code
 eval2$brand2 <- predict(pc2, eval2)
-
 # fill in missing brand codes with imputed values
 eval2$brand_code <- ifelse(!is.na(eval2$brand_code), eval2$brand_code, eval2$brand2)
-
 # remove brand prediction field
 eval2$brand2 <- NULL
-
 # isolate evaluation data only
 eval2 <- eval2 %>%
   filter(obs_type == 'test') %>%
@@ -489,11 +510,3 @@ Having imputed any missing values in our test set, we are now ready to make our 
 #### Final Predictions
 
 ## Conclusion
-
-
-
-
-
-
-
-
