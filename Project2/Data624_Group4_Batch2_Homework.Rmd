@@ -1,0 +1,1261 @@
+---
+title: "Data 624 Batch 2 Homework"
+author: "Subhalaxmi Rout, Kenan Sooklall,Leo Yi, Christian Thieme, Devin Teran"
+date: "7/18/2021"
+output:
+  word_document: default
+  html_document: default
+always_allow_html: yes
+subtitle: Homework Chapter 6-8 & Recommender System
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library,include=FALSE}
+library(ggplot2)
+library(visdat)
+library(caret)
+library(RANN)
+library(gridExtra)
+library(grid)
+library(ggplot2)
+library(lattice)
+library(dplyr)
+library(kableExtra)
+library(magrittr)
+library(elasticnet)
+library(tidyverse)
+library(mlbench)
+library(caret)
+```
+\newpage
+
+# Chapter 6 Exercises
+
+# Exercise 6
+6.3. A chemical manufacturing process for a pharmaceutical product was discussed in Sect.1.4. In this problem, the objective is to understand the relationship between biological measurements of the raw materials (predictors), measurements of the manufacturing process (predictors), and the response of product yield. Biological predictors cannot be changed but can be used to assess the quality of the raw material before processing. On the other hand, manufacturing process predictors can be changed in the manufacturing process. Improving product yield by 1% will boost revenue by approximately one hundred thousand dollars per batch:
+
+## (a) Start R and use these commands to load the data:
+```{r ex-6-3-a}
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+data <- ChemicalManufacturingProcess
+```
+The matrix **processPredictors** contains the 57 predictors (12 describing the input biological material and 45 describing the process predictors) for the 176 manufacturing runs. **yield** contains the percent yield for each run.
+
+\newpage
+## (b) A small percentage of cells in the predictor set contain missing values. Use an imputation function to fill in these missing values (e.g., see Sect. 3.8).
+
+
+There are a total of 24 rows having NAs.
+```{r ex-6-3-b-missing-total}
+sum(!complete.cases(data))
+```
+
+
+**Missing Yield & Biological Predictors**
+Let's first review the **yield** and **biological** predictors. The function, **vis_dat**, is an easy way to visualize missing data.  The y-axis represents the observation with row 1 at the top and increasing as you move down the y-axis.  Each column of data is represented on the x-axis.  If a value is missing, you'll see it highlighted in grey otherwise it will be pink.
+
+Here there are no values missing from any of the biological or yield columns.
+
+```{r ex-6-3-b-see-missing-values}
+yield_and_bio <- data[,c(1:13)]
+
+vis_dat(yield_and_bio)
+
+```
+\newpage
+
+### Missing Process Predictors
+Now let's review if any values are missing from the **manufacturing process** predictors.  We see more grey rectangles which indicates there are more na values.
+
+```{r ex-6-3-b-see-missing-values-process,fig.width=10,fig.height=5}
+process <- data[,c(14:58)]
+
+vis_dat(process)
+
+```
+
+**The first observation includes many na values:**
+* ManufacturingProcess01 to ManufacturingProcess08
+* ManufacturingProcess10 to ManufacturingProcess12
+* ManufacturingProcess22 to ManufacturingProcess24
+* ManufacturingProcess40 to ManufacturingProcess41
+
+**Many of the observations from row 1-25 are missing the many values:**
+* ManufacturingProcess03, ManufacturingProcess10, & ManufacturingProcess11
+
+**Observations 170-176 are are missing the most values:**
+* ManufacturingProcess25 to ManufacturingProcess36 with the exception of ManufacturingProcess32
+
+\newpage
+### Impute Missing Values
+In order to complete our analysis, we are going to impute these missing values using the **preProcess()** function using method **knnImpute** which can be found in the caret package.
+
+If we view the first row which we previously saw was missing a ton of values, we now see they have been filled in.
+```{r ex-6-3-b-2}
+imp <- preProcess(data, method = "knnImpute")
+imputed <- predict(imp,data)
+imputed[c(1),]
+```
+
+\newpage
+## (c) Split the data into a training and a test set, pre-process the data, and tune a model of your choice from this chapter. What is the optimal value of the performance metric?
+
+Here we are going to start by using 80% of the data set to train our model.  The training set contains 144 rows and 58 columns. Similarly, the test set contains 32 rows and 58 columns.  The data set has a target variable or dependent variable called Yield.
+
+We will use the dataframe with imputed values, *imputed*.  To do this we randomly sample 80% of the observations based on their row index.
+```{r ex-6-3-c-split-train-test}
+#for reproducibility
+set.seed(123)
+train_index <- sample(nrow(imputed),nrow(imputed)*0.8)
+
+#get subset of ids
+train_pred <- imputed[train_index,-1]
+train_output <- imputed[train_index,1]
+
+test_pred <- imputed[-train_index,-1]
+test_output <- imputed[-train_index,1]
+
+
+```
+\newpage
+### Modeling Data with Ridge Regression
+For this problem, we will use the **ridge regression** model.  Ridge regression is used when the predictors in the data set are highly correlated by adding a penalty error to the sum of squared errors.  It uses, *alpha*, as a tuning parameter for the penalty.
+
+Next we are going to determine which value of lambda returns the best model.  We know which lambda is best because it will produce the model with the lowest value of RMSE.
+```{r ex-6-3-c-best-lambda}
+ctrl <- trainControl(method = "cv", number = 10)
+#creating grid of possible values for lambda
+ridgeGrid <- data.frame(.lambda = seq(0, .1, length = 15))
+#for reproducibility
+set.seed(123)
+ridgeRegFit <- train(train_pred,train_output,
+                     method='ridge',
+                     #Our different alpha penalty values
+                     tuneGrid=ridgeGrid,
+                     trControl = ctrl,
+                     #center & get pred variables on same scale
+                     preProc=c("center","scale"))
+ridgeRegFit
+```
+
+This plot shows the change in RMSE as alpha increases.
+```{r ex-6-3-c-RMSE-alphas}
+plot(ridgeRegFit)
+
+```
+
+
+Our best model uses alpha equal to 0.0357.   This model has an R^2 of 55% and RMSE of 0.7.
+```{r ex-6-3-c-best-model}
+best_ridge_model = ridgeRegFit$results[ridgeRegFit$results$RMSE == min(ridgeRegFit$results$RMSE),]
+best_ridge_model
+```
+```{r other,include=FALSE}
+ridge_model <- enet(x = as.matrix(train_pred), y = train_output,
+                    lambda = best_ridge_model$lambda,
+                    normalize = TRUE)
+
+
+
+```
+
+
+\newpage
+## (d) Predict the response for the test set. What is the value of the performance metric and how does this compare with the resampled performance metric on the training set?
+
+Here we use our best ridge regression model to see how well it predicts on our test data.  We set s = 1 and mode = 'fraction' in order to get a ridge regression model.
+```{r ex-6-3-d}
+ridgePred_Test <-predict(ridge_model,newx=as.matrix(test_pred),s=1,mode="fraction",type="fit")
+ridgeCoeff_Test <-predict(ridge_model,newx=as.matrix(test_pred),s=1,mode="fraction",type="coefficients")
+```
+
+Now we can compare how our model performed on our train data versus our test data.
+```{r ex-6-3-d-compare-train-test}
+# test performance
+model_values <- data.frame(obs = test_output, pred = ridgePred_Test$fit)
+test_performance <- defaultSummary(model_values)
+
+# train matrices
+train_performance <- best_ridge_model[,c('RMSE','Rsquared','MAE')]
+
+# create data frame of both train + test performances
+perf_df <- rbind(t(data.frame(test_performance)), data.frame(train_performance))
+
+# Rename column
+names(perf_df) <- c("RMSE", "Rsquared", "MAE")
+rownames(perf_df) <-  c("Test","Train")
+
+# Train and Test matrices
+perf_df
+```
+
+The RMSE value for the test data is 3.3 and the RMSE value for the training set is 0.7.  The lower the RMSE value, the better the model.  The R^2 value for the test set is lower than the training set, which indicates the model accounts for the variability in the training data better than the test data. These metrics tell us that our model did not perform as well as on the testing data as it did on the training data, which isn't too surprising.
+
+\newpage
+## (e) Which predictors are most important in the model you have trained? Do either the biological or process predictors dominate the list?
+```{r ex-6-3-e}
+variable_importance <- varImp(ridgeRegFit,scale=F)
+
+```
+
+```{r ex-6-3-e-2}
+plot(variable_importance, top = 20)
+```
+
+**ManufacturingProcess32** is the most important variable followed by **BiologicalMaterial06**.  The manufacturing predictors are appearing more frequently in our list and appear to more important in our model.
+\newpage
+
+## (f) Explore the relationships between each of the top predictors and the response. How could this information be helpful in improving yield in future runs of the manufacturing process?
+```{r ex-6-3-f-all,message=FALSE, warning=FALSE}
+vi_df <- variable_importance$importance %>%
+  data.frame() %>%
+  top_n(9)
+vi_df$var <- rownames(vi_df)
+
+df_top_x <- data[,names(imputed) %in% vi_df$var] %>%
+  bind_cols(Yield = data$Yield)
+df_top_x %>%
+  gather(variable, value, -Yield) %>%
+  ggplot(aes(x = value, y = Yield,color=variable)) +
+  geom_point() +
+  facet_wrap(~variable, scales = 'free_x') +
+  labs(x = element_blank())
+```
+
+The sub-plots above illustrate positive and negative correlations with the response variable. To improve the yield in the future runs, the manufacturing processes with positive coefficients should be boosted or increased, while the processes with negative coefficients should be reduced.  The majority of the important variables have a positive relationship except **ManufacturingProcess17** and **ManufacturingProcess13**. By knowing which variables that affect yield and the relationship of each variable against yield, we can determine how to adjust each material or process to maximize results.
+
+\newpage
+# Chapter 7 Exercises
+
+# Exercise 7.2
+## 7.2. Friedman (1991) introduced several benchmark data sets created by simulation. One of these simulations used the following nonlinear equation to create data:
+$y = 10sin(pi* x_{1}x_{2})+20(x_{3} −0.5)^2 +10x_{4} +5x_{5} +N(0,sigma^2)$
+
+## where the x values are random variables uniformly distributed between [0, 1] (there are also 5 other non-informative variables also created in the simulation). The package *mlbench* contains a function called *mlbench.friedman1* that simulates these data:
+```{r ex-7.2,fig.height=5}
+set.seed(200)
+trainingData <- mlbench.friedman1(200, sd = 1)
+## We convert the 'x' data from a matrix to a data frame.  One reason is that this will give the columns names.
+trainingData$x <- data.frame(trainingData$x)
+## Look at the data using
+obj <- featurePlot(trainingData$x, trainingData$y)
+print(obj)
+## or other methods.
+## This creates a list with a vector 'y' and a matrix of predictors 'x'. Also simulate a large test set to
+## estimate the true error rate with good precision:
+testData <- mlbench.friedman1(5000, sd = 1)
+testData$x <- data.frame(testData$x)
+```
+\newpage
+
+Tune several models on these data. For example:
+
+### Knn Model
+```{r ex-7.2-2-knn-train-model,warning = FALSE}
+library(caret)
+set.seed(123)
+knnModel <- train(x = trainingData$x,
+                  y = trainingData$y,
+                  preProc = c("center", "scale"),
+                  tuneLength = 10)
+
+knnModel
+
+```
+
+```{r ex-7.2-3-knn-predict}
+knnPred <- predict(knnModel, newdata = testData$x)
+## The function 'postResample' can be used to get the test set
+## performance values
+kNN_Results <- postResample(pred = knnPred, obs = testData$y)
+kNN_Results
+```
+\newpage
+### MARS Model
+Now we are going to run the MARS modeling using the package **earth**.  MARS stands for Multivariate Adaptive Regression Splines. Like neural networks and partial least squares, MARS (Friedman 1991) uses surrogate features instead of the original predictors.
+
+When running a MARS model, you are able to set the value for **nprune** which is the number of terms allowed to be included in the final model.  Here we've chosen 20 since that is more than the number of X columns in order to allow for all the terms to be included and leave room for interactions.  You can also set the degree, which is the number of hinge functions that can interact. We'll pick 3 for the degree.
+```{r ex-7.2-2-mars-train-model,message=FALSE,warning=FALSE}
+library(earth)
+set.seed(123)
+
+ctrl <- trainControl(method = "cv", number = 10)
+#set values for nprune and degree
+parameter_Grid <- expand.grid(nprune=seq(1:20),degree=seq(1:3))
+
+#tune model
+MARSModel <- train(trainingData$x,
+                  trainingData$y,
+                  method='earth',
+                  metric='RMSE',
+                  tuneGrid=parameter_Grid,
+                  trControl = ctrl)
+
+
+summary(MARSModel)
+
+
+```
+\newpage
+Here we are going to visualize each of the models that were created in the previous step.  It looks that the model with degree = 3 and 20 terms has the lowest RMSE, which makes it the best model.
+```{r ex-7.2-2-mars-model-fit}
+ggplot(MARSModel)
+```
+
+Now we will predict using the test data using our best MARS model and review the model results.
+```{r ex-7.2-2-mars-test}
+mars_predictions <- predict(MARSModel$finalModel,testData$x)
+
+MARS_Results <- postResample(pred = mars_predictions, obs = testData$y)
+MARS_Results
+```
+\newpage
+### Neural Network Model
+
+Neural networks are powerful nonlinear regression techniques inspired by theories about how the brain works. Like partial least squares, the outcome is modeled by an intermediary set of unobserved variables (called hidden variables or hidden units here). This model has input, hidden layers and output.
+
+Now we will tune the model.  The parameters that take on multiple values are **hidden units** and **amount of weight decay**.  We will do this using the train function as we have before.
+```{r train-neural-network,warning=FALSE}
+neural_Grid <- expand.grid(.decay = c(0,0.01,0.1),
+                           .size = c(1:10),
+                           .bag = FALSE)
+set.seed(123)
+nnetModel <- train(trainingData$x,trainingData$y,
+                  method = "avNNet",
+                  tuneGrid = neural_Grid,
+                  trControl = ctrl,
+                  preProc = c("center","scale"),                   #center & scale the data
+                  linout = TRUE,
+                  trace = FALSE,
+                  #MaxNWts = 10 * (ncol(trainingData$x) + 1) + 10 + 1,
+                  maxit = 500)
+plot(nnetModel)
+```
+
+The best model was using the weight decay 0.1 and with 10 hidden units.
+\newpage
+Now we will predict on the test data using our neural network model and the results.
+```{r ex-7.2-2-nn-test}
+nn_predictions <- predict(nnetModel$finalModel,testData$x)
+
+nn_Results <- postResample(pred = nn_predictions, obs = testData$y)
+nn_Results
+```
+
+\newpage
+## Which models appear to give the best performance? Does MARS select the informative predictors (those named *X1–X5)*?
+
+
+### Model Summary
+It looks like the MARS model outperforms kNN since the RMSE & MAE are lower and R^2 is higher.
+```{r ex-7.2-2-model-comparison}
+results <- data.frame(rbind(nn_Results,kNN_Results,MARS_Results))
+results
+```
+### MARS most important predictors
+The informative predictors are X1-X5.
+```{r MARS-important-predictors}
+varImp(MARSModel$finalModel)
+```
+
+\newpage
+# Exercise 7.5
+## Exercise 6.3 describes data for a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several nonlinear regression models.
+
+This code is from week 6 homework problems and imputes missing values and splits the data into training and testing sets.
+```{r impute-split-preprocess}
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+data <- ChemicalManufacturingProcess
+imp <- preProcess(data, method = "knnImpute")
+imputed <- predict(imp,data)
+
+set.seed(123)
+ids <- sample(nrow(imputed),nrow(imputed)*0.8)
+
+train_pred <- imputed[ids,-1]
+train_output <- imputed[ids,1]
+
+test_pred <- imputed[-ids,-1]
+test_output <- imputed[-ids,1]
+
+```
+
+Now we will use several nonlinear regression models to see which performs best on our data.
+\newpage
+
+### Neural Network
+As stated previously, neural networks are powerful nonlinear regression techniques inspired by theories about how the brain works. Like partial least squares, the outcome is modeled by an intermediary set of unobserved variables (called hidden variables or hidden units here). This model has input, hidden layers and output.
+```{r nn-tune}
+neural_Grid <- expand.grid(.decay = c(0,0.01,0.1),
+                           .size = c(1:10),
+                           .bag = FALSE)
+
+set.seed(123)
+
+nnetTune <- train(train_pred,train_output,
+                  method = "avNNet",
+                  tuneGrid = neural_Grid,
+                  trControl = ctrl,
+                  #center & scale the data
+                  preProc = c("center","scale"),
+                  linout = TRUE,
+                  trace = FALSE,
+                  maxit = 500)
+
+```
+
+```{r nn-pred}
+nn_predictions <- predict(nnetTune$finalModel,test_pred)
+
+nn_results <- postResample(pred = nn_predictions, obs = test_output)
+nn_results
+```
+
+### SVM
+SVMs are a class of powerful, highly flexible modeling techniques. The theory behind SVMs was originally developed in the context of classification models.
+```{r svm-tune,message=FALSE}
+library(kernlab)
+svmTune <- train(train_pred, train_output,
+             method = "svmRadial",
+             preProc = c("center", "scale"),
+             tuneLength = 14,
+             trControl = trainControl(method = "cv"))
+```
+
+```{r svm-pred}
+svm_predictions <- predict(svmTune$finalModel,test_pred)
+
+SVM_results <- postResample(pred = svm_predictions, obs = test_output)
+SVM_results
+```
+\newpage
+### kNearestNeighbors
+Now we will run the kNN model and will center and scale the data.
+```{r knn-tune,warning=FALSE}
+library(caret)
+knnTune <- train(x = train_pred,
+                  y = train_output,
+                  preProc = c("center", "scale"),
+                  tuneLength = 10)
+
+knnTune
+
+```
+
+
+```{r knn-pred}
+knnPred <- predict(knnTune, newdata = test_pred)
+
+knn_Results <- postResample(pred = knnPred, obs = test_output)
+knn_Results
+```
+\newpage
+### MARS
+As previously stated, MARS models work like neural networks and partial least squares, MARS (Friedman 1991) uses surrogate features instead of the original predictors.
+```{r mars-tune,warning=FALSE}
+ctrl <- trainControl(method = "cv", number = 10)
+parameter_Grid <- expand.grid(nprune=seq(1:20),degree=seq(1:3))
+
+MARS_Fit <- train(train_pred,
+                  train_output,
+                  method='earth',
+                  metric='RMSE',
+                  tuneGrid=parameter_Grid,
+                  trControl = ctrl)
+
+```
+
+```{r mars-pred}
+mars_predictions <- predict(MARS_Fit$finalModel,test_pred)
+
+MARS_results <- postResample(pred = mars_predictions, obs = test_output)
+MARS_results
+```
+
+## (a) Which nonlinear regression model gives the optimal resampling and test set performance?
+The kNearestNeighbor model performs the best because it has the highest R^2 value and ties with the lowest RMSE & MAE values.
+```{r ex-7-5-a-model-comparison}
+results <- data.frame(rbind(knn_Results,MARS_results,SVM_results,nn_results))
+results
+```
+\newpage
+## (b) Which predictors are most important in the optimal nonlinear regression model? Do either the biological or process variables dominate the list? How do the top ten important predictors compare to the top ten predictors from the optimal linear model?
+
+In the nonlinear regression model, the manufacturing predictors are seen more but not by much.
+```{r ex-7-5-b}
+nl_variable_importance <- varImp(knnTune,scale=F)
+
+topPred_knn <- as.data.frame(varImp(knnTune$finalModel))
+topPred_knn <- data.frame(overall = topPred_knn$Overall,
+                          names   = rownames(topPred_knn))
+non_linear_top_predictors <- topPred_knn[order(topPred_knn$overall,decreasing = T),]
+head(non_linear_top_predictors,10)
+```
+In both the linear and nonlinear regression model, 9/10 of the top variables are the same.  **BiologicalMaterial04** is in the nonlinear regression model and not in the linear regression model.  **BiologicalMaterial02** is in the linear regression model and not in the nonlinear regression model.
+```{r ex-7-5-b-top-predictors}
+topPred_nonlinear <- head(topPred_knn[order(topPred_knn$overall,decreasing = T),],10)$names
+topPred_linear <- c('ManufacturingProcess32','BiologicalMaterial06','ManufacturingProcess13',
+                    'BiologicalMaterial03','ManufacturingProcess17','BiologicalMaterial12',
+                    'BiologicalMaterial02','ManufacturingProcess09','ManufacturingProcess31','ManufacturingProcess06')
+
+topPreds_in_Both <- as.data.frame(cbind(topPred_nonlinear,topPred_linear))
+topPreds_in_Both
+
+```
+\newpage
+## (c) Explore the relationships between the top predictors and the response for the predictors that are unique to the optimal nonlinear regression model. Do these plots reveal intuition about the biological or process predictors and their relationship with yield?
+
+```{r ex-6-5-c-all,message=FALSE, warning=FALSE}
+x <- 9
+
+vi_df <- nl_variable_importance$importance %>%
+  data.frame() %>%
+  top_n(x)
+
+vi_df$var <- rownames(vi_df)
+
+df_top_x <- data[,names(imputed) %in% vi_df$var] %>%
+  bind_cols(Yield = data$Yield)
+
+df_top_x %>%
+  gather(variable, value, -Yield) %>%
+  ggplot(aes(x = value, y = Yield,color=variable)) +
+  geom_point() +
+  facet_wrap(~variable, scales = 'free_x') +
+  labs(x = element_blank())
+```
+\newpage
+
+The predictor, ManufacturingProcess32, is the top predictor in both the linear and nonlinear regression models. This predictor contains data which are discrete, whole numbers. There is a strong linear relationship between the two variables with a correlation of 61%.  The measurements from ManufacturingProcess32 would be extremely helpful in trying to maximize the Yield.
+
+Looking at the results above, we see few differences than reported in 6.3. We can see that the features are strongly correlated. For BiologicalMaterial 03, 06, and 12 as well as ManufacturingProcess 06, 09, and 32, the more we increase these values, the greater our yield will be. Conversely, for those not mentioned, these variables have negatively correlated relationships, meaning the more we can minimize these values, the higher our yield will be.
+
+\newpage
+# Chapter 8 Exercises
+
+# Exercise 8.1
+8.1. Recreate the simulated data from Exercise 7.2:
+```{r ex-8-1,warning=FALSE,message=FALSE}
+library(mlbench)
+set.seed(200)
+simulated <- mlbench.friedman1(200, sd = 1)
+simulated <- cbind(simulated$x, simulated$y)
+simulated <- as.data.frame(simulated)
+colnames(simulated)[ncol(simulated)] <- "y"
+```
+
+## (a) Fit a random forest model to all of the predictors, then estimate the variable importance scores:
+```{r ex-8-1-a,warning=FALSE,message=FALSE}
+library(randomForest)
+library(caret)
+set.seed(123)
+model1 <- randomForest(y ~ ., data = simulated, importance = TRUE,ntree = 1000)
+rfImp1 <- varImp(model1, scale = FALSE)
+```
+
+## Did the random forest model significantly use the uninformative predictors (V6 – V10)?
+The predictors V6 - V10 have a variable importance score of near 0, which tells me the predictors were not significant in the model.
+```{r ex-8-1-a-unimportant}
+rfImp1
+```
+
+\newpage
+## (b) Now add an additional predictor that is highly correlated with one of the informative predictors. For example:
+```{r ex-8-1-b}
+simulated$duplicate1 <- simulated$V1 + rnorm(200) * .1
+cor(simulated$duplicate1, simulated$V1)
+
+```
+
+## Fit another random forest model to these data. Did the importance score for V1 change? What happens when you add another predictor that is also highly correlated with V1?
+
+After adding the variable that was highly correlated with V1 and rerunning the model, the importance score for V1 did decrease from 8.86 to 5.01.  The new variable, duplicateV1, had an importance score of 4.32.  This makes sense because we know if you have a variable that has an importance score of X and you add a highly correlated second variable, that each of the correlated variables will have an importance score of roughly X/2.
+
+This is referenced on pafge 202 of Applied Predictive Modeling book by Max Kuhn and Kjell Johnson.
+```{r ex 8-1-b-2}
+set.seed(123)
+model2 <- randomForest(y ~ ., data = simulated, importance = TRUE,ntree = 1000)
+rfImp2 <- varImp(model2, scale = FALSE)
+rfImp2
+```
+
+Now we are going to add a second variable that is highly correlated with V1.  This means we have 3 total variables that are extremely highly correlated with one another.
+```{r ex 8-1-b-3}
+simulated$duplicate2 <- simulated$V1 + rnorm(200) * .1
+cor(simulated$duplicate2, simulated$V1)
+
+```
+After creating a third model which included the two new variables that are highly correlated with V1, we see that the importance score for V1 drops even more.  V1 importance dropped from 8 to 5.01 to 3.87 in this third model. The duplicate variables have lower importance scores than V1 (duplicate1: 2.76 and duplicate2: 3.94).
+
+Our book tells us that if we have 3 correlated variables with an original importance of X, the model with all 3 correlated variables, will cause the importance score to drop to X/3.  Our data follows this statement pretty closely.
+```{r ex 8-1-b-4}
+set.seed(123)
+model3 <- randomForest(y ~ ., data = simulated, importance = TRUE,ntree = 1000)
+rfImp3 <- varImp(model3, scale = FALSE)
+rfImp3
+```
+\newpage
+## (c) Use the **cforest** function in the party package to fit a random forest model using conditional inference trees. The party package function **varimp** can calculate predictor importance. The conditional argument of that function toggles between the traditional importance measure and the modified version described in Stroblet al. (2007). Do these importances show the same pattern as the traditional random forest model?
+```{r ex-8-1-c,warning=FALSE,message=FALSE}
+library(party)
+
+bagCtrl <- cforest_control(mtry = ncol(simulated) - 1)
+baggedTree <- cforest(y ~ ., data = simulated, controls = bagCtrl)
+```
+
+Yes, the conditional inference tress shows the same pattern.  V1 important is similar to the duplicate1 and duplicate2, which are about 1/3 of the original important size of V1 which was 8.
+
+Also, variables V6-V10 do not appear to be significant in the model which matches the traditional random forest model.
+```{r ex-8-1-c-2}
+cfImp <- varImp(baggedTree)
+cfImp
+```
+\newpage
+## (d) Repeat this process with different tree models, such as boosted trees and Cubist. Does the same pattern occur?
+
+### Boosted Tree Model
+Lets first start off by creating a boosted tree model using the the **train** function.  When running a boosted tree model, we are able to tune the parameters **interaction depth, number of trees and shrinkage.**
+
+The **interaction depth** is the maximum number of splits the tree can have or the depth of the trees.
+
+The **number of trees** is how many trees will be fit or number of iterations.
+
+The **shrinkage** is the learning rate.
+```{r ex-8-1-d-boosted}
+set.seed(123)
+
+gbmTune <- train(simulated[,-11],simulated[,c('y')],
+                 method = "gbm",
+                ## Dont print tons of notes to screen
+                verbose = FALSE)
+```
+
+
+Looking at the importance scores of each predictor from the boosted tree model we see some differences.  In general V1-V5 are still more important than V6-V10.  V4 is still the most important predictor too.  The importance scores are much higher and close to 100 for this model while other models were much closer to 0.
+```{r ex-8-1-d-boosted-varImp}
+#causing issues have to fix
+#gbm_importance <- caret::varImp(gbmTune)
+#gbm_importance
+```
+
+### Cubist Model
+Now let's create a cubist model using the function **train** and method = **cubist**.
+```{r ex-8-1-d-cubist}
+library(Cubist)
+
+cubistMod <- train(simulated[,-11],
+                   simulated[,c('y')],
+                   method = "cubist")
+```
+
+
+Again with the **cubist** model we are seeing variable V1-V5 as the most important predictors.  V2 takes the top spot as most important predictor in place of V4 in the other models.  Again we are seeing predictors V6-V10 having much lower importance scores that are close to 0.
+```{r ex-8-1-d-cubist-varImp}
+varImp(cubistMod)
+
+```
+\newpage
+# Exercise 8.2
+## Use a simulation to show tree bias with different granularities.
+
+We will do the simulation here with 3 variables having different granularities. The response variable we will choose, would be a function of random selection and some noise.
+
+**Below, a regression tree is fitted using rpart, and the variable importance is calculated using varImp**. -->
+```{r ex-8-2,message=FALSE}
+library(rpart)
+set.seed(123)
+
+x1 <- rnorm(300, 30, 1)
+x2 <- rnorm(300, 30, 2)
+x3 <- rnorm(300, 30, 3)
+
+z <- (.4 * x1) + (.1 * x3) + rnorm(300, 0, sqrt(1- (.16 + .04 + .01)))
+y <- (1.5 * z) + 10
+
+granular_simulated <- data.frame(x1 = x1, x2 = x2, x3 = x3, y=y)
+
+rpartfit <- rpart(y ~., data = granular_simulated)
+
+varimp_sim <- varImp(rpartfit)
+
+varimp_sim
+```
+As we can see, the tree uses x1, and x3 mostly to split, x2 is not related to Y, so the x2 variance score is less. In this simulation, x1 has the smallest standard deviation, so it is the strongest predictor in this case.
+
+\newpage
+# Exercise 8.3
+In stochastic gradient boosting the bagging fraction and learning rate will govern the construction of the trees as they are guided by the gradient. Although the optimal values of these parameters should be obtained through the tuning process, it is helpful to understand how the magnitudes of these parameters affect magnitudes of variable importance. Figure 8.24 provides the variable importance plots for boosting using two extreme values for the bagging fraction (0.1 and 0.9) and the learning rate (0.1 and 0.9) for the solubility data. The left-hand plot has both parameters set to 0.1, and the right-hand plot has both set to 0.9:
+
+## (a) Why does the model on the right focus its importance on just the first few of predictors, whereas the model on the left spreads importance across more predictors?
+This question is somewhat hard to answer. This may cause of 2 factor i.e bragging fraction and learning rate. In gradient boosting algorithm, the learner is designed to employ the optimal fitting the gradient in each stage. This greedy strategy might cause over-fitting, and reduce generalization power. Learning rate is used to avoid over-fitting by adding only partial of the predicted value to the previous accumulated predicted values. The higher value will increase the greediness, and focus on fewer variables.
+
+## (b) Which model do you think would be more predictive of other samples?
+Greedy models are less likely to select the optimal global model and are prone to over-fitting. Stochastic models reduce prediction variance. Therefore, the less greedy model on the left (with a 0.1 learning rate) that is also more random (due to only selecting 0.1 of the training set observations to propose the next tree in the expansion) would be more predictive of other samples.
+
+## (c) How would increasing interaction depth affect the slope of predictor importance for either model in Fig. 8.24?
+Interaction depth specifies the tree depth and node splits. Models with a lower learning rate see greater improvements from interaction depth than models with a higher learning rate. Tree depth and learning rates impact the number of predictors which impacts the model greediness which impacts the predictive ability of the model which impacts the RMSE, all proportionally. Therefore, interaction depth will increase the number of predictors and RMSE. Variable importance will be spread across more predictors.
+
+\newpage
+## Exercise 8.7
+Refer to Exercises 6.3 and 7.5 which describe a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several tree-based models:
+
+We decide to work with few tree based models. They are Random Forest (RF), Stochastic Gradient Boosting (SGB), Rule-Based Cubist (CUBE), Classification and Regression Tree (CART), Conditional Inference Tree (CIT).
+
+We are going to the same data for problem 6.3, and 7.5 that went through data imputation, pre-processing and data splitting. Training data - 80%, test data - 20%.
+
+
+### Random Forest
+RF is implemented in the train() function using the rf method which implements Random Forest classification and regression using the randomForest package.
+```{r ex-8-7-c-rf}
+set.seed(123)
+ctrl1 <- trainControl(method = "boot", number = 25)
+tg1 <- expand.grid(mtry=seq(2,38,by=3))
+rfModel <- train(x = train_pred, y = train_output, method = "rf",
+  metric = "Rsquared", tuneGrid = tg1, trControl = ctrl1)
+```
+
+### Stochastic Gradient Boosting (SGB)
+SGB is implemented in the train() function using the gbm method fits generalized boosted regression models. The tuning parameters declared in the tuning grid to be evaluated are various variable interaction depths (interaction.depth), fitted trees (n.trees), learning rates (shrinkage), and a minimum of 10 observations in the trees terminal nodes (n.minobsinnode).
+```{r ex-8-7-c-sg,warning=FALSE}
+set.seed(123)
+ctrl2 <- trainControl(method = "boot", number = 25)
+tg2 <- expand.grid(interaction.depth=seq(1,6,by=1), n.trees=c(25,50,100,200),
+  shrinkage=c(0.01,0.05,0.1,0.2), n.minobsinnode=10)
+sgbModel <- train(x = train_pred, y = train_output, method = "gbm",
+  metric = "Rsquared", tuneGrid = tg2, trControl = ctrl2, verbose=F)
+```
+
+### Rule-Based Cubist (CUBE)
+CUBE is implemented in the train() function using the cubist method which fits a rule-based M5 model with additional corrections based on nearest neighbors in the training set. The parameters committees use for boosting interaction and neighbors use for number of instances.
+```{r ex-8-7-c-rbc}
+set.seed(123)
+ctrl3 <- trainControl(method = "boot", number = 25)
+tg3 <- expand.grid(committees = c(1,5,10,20,50,100), neighbors = c(0,1,3,5,7))
+cubeModel <- train(x = train_pred, y = train_output, method = "cubist",
+  metric = "Rsquared", tuneGrid = tg3, trControl = ctrl3)
+```
+
+### Classification and Regression Tree
+CART is implemented in the train() function using the rpart2 method which tunes the model over the maximum depth (of the tree).
+```{r ex-8-7-c-class}
+set.seed(123)
+ctrl4 <- trainControl(method = "boot", number = 25)
+tg4 <- expand.grid(maxdepth= seq(1,10,by=1))
+cartModel <- train(x = train_pred, y = train_output, method = "rpart2",
+  metric = "Rsquared", tuneGrid = tg4, trControl = ctrl4)
+```
+
+### Conditional Inference Tree
+CIT is implemented in the train() function using the ctree2 method where the number of randomly selected predictors to choose from at each split is set by mtry.
+```{r ex-8-7-c-cit}
+set.seed(123)
+ctrl5 <- trainControl(method = "cv")
+tg5 <- expand.grid(maxdepth= seq(1,10,by=1), mincriterion=1-c(0.01, 0.05, 0.1))
+citModel <- train(x = train_pred, y = train_output, method = "ctree2",
+  metric = "Rsquared", tuneGrid = tg5, trControl = ctrl5)
+```
+
+## (a) Which tree-based regression model gives the optimal resampling and test set performance?
+
+### Training Set Resampling
+```{r ex-8-7-a-results}
+metrics <- function(models) {
+  RMSE = min(models$results$RMSE)
+  Rsquared = max(models$results$Rsquared)
+  MAE = min(models$results$MAE)
+  return(cbind(RMSE, Rsquared, MAE)) }
+
+data.frame(rbind(metrics(rfModel), metrics(sgbModel),
+  metrics(cubeModel), metrics(cartModel), metrics(citModel)),
+  row.names = c("RF","SGB","CUBE","CART","CIT"))
+```
+\newpage
+### Predict Test Set
+```{r ex-8-7-a-test-set-pred}
+fcastRf   <- predict(rfModel,   newdata = test_pred)
+fcastSgb  <- predict(sgbModel,  newdata = test_pred)
+fcastCube <- predict(cubeModel, newdata = test_pred)
+fcastCart <- predict(cartModel, newdata = test_pred)
+fcastCit  <- predict(citModel,  newdata = test_pred)
+
+data.frame(rbind(
+  postResample(pred = fcastRf,   obs = test_output),
+  postResample(pred = fcastSgb,  obs = test_output),
+  postResample(pred = fcastCube, obs = test_output),
+  postResample(pred = fcastCart, obs = test_output),
+  postResample(pred = fcastCit,  obs = test_output)
+),
+  row.names = c("RF","SGB","CUBE","CART","CIT")
+)
+```
+
+The randomForest performed the best since it had the highester R^2 value and a lower RMSE & MAE values.
+\newpage
+## (b) Which predictors are most important in the optimal tree-based regression model? Do either the biological or process variables dominate the list? How do the top 10 important predictors compare to the top 10 predictors from the optimal linear and nonlinear models?
+Optimal tree based model is random Forest model, we can see most important predictors by using varImp function.
+
+```{r ex-8-7-b}
+plot(varImp(rfModel), top=20)
+```
+
+Manufacturing variables dominate the list, out of 20 highest significant predictors 8 are Biological and rest all are manufacture variables.
+
+All models also agree that ManufacturingProcess32 is the most important biological process. BiologicalMaterial03 and 06 were very important in all 3 models.
+```{r summary-all-top-important-var}
+topPred_nonlinear <- head(topPred_knn[order(topPred_knn$overall,decreasing = T),],10)$names
+topPred_linear <- c('ManufacturingProcess32','BiologicalMaterial06','ManufacturingProcess13',
+                    'BiologicalMaterial03','ManufacturingProcess17','BiologicalMaterial12',
+                    'BiologicalMaterial02','ManufacturingProcess09','ManufacturingProcess31','ManufacturingProcess06')
+topTree <- c('ManufacturingProcess32','BiologicalMaterial03','BiologicalMaterial06',
+                    'ManufacturingProcess13','BiologicalMaterial12','ManufacturingProcess31',
+                    'ManufacturingProcess06','ManufacturingProcess09','BiologicalMaterial02','BiologicalMaterial04')
+topPreds_in_Both <- as.data.frame(cbind(topPred_nonlinear,topPred_linear,topTree))
+topPreds_in_Both
+```
+
+
+\newpage
+## (c) Plot the optimal single tree with the distribution of yield in the terminal nodes. Does this view of the data provide additional knowledge about the biological or process predictors and their relationship with yield?
+
+```{r ex-8-3-c-plot}
+getTree(rfModel$finalModel,labelVar=TRUE)
+```
+
+\newpage  
+# Recommender System  
+We worked on the recommender system in Python and R and are going to compare the results from each.  Each analysis reviewed data from Market Basket.  
+  
+    
+# Market Basket Analysis in R  
+The Groceries data set contains a collection of receipts with each line representing 1 receipt and the items purchased. Each line is called a transaction and each column in a row represents an item. Here is the dataset is in GroceryDataSet.csv (comma separated file). Your assignment is to use R to mine the data for association rules. You should report support, confidence and lift and your top 10 rules by lift.     
+  
+We'll start with importing the libraries necessary for our analysis.   
+```{r libraries,warning=FALSE,message=FALSE}
+library(arules)
+library(pander)
+library(arulesViz)
+library(fpp2)
+library(RColorBrewer)
+```
+
+The Groceries Data Set contains a collection of receipts with each line representing 1 receipt and the items purchased. Each line is called a transaction and each column in a row represents an item. Load the csv file to R and lets get in to EDA.  
+  
+The purpose of market basket analysis is retailers/businesses can analyze the data like what are customers buying together and make use of that information for making some profitable decisions.    
+
+Load the data from csv using read.transactions() from arules package.  
+```{r load-mba-data}
+grocery_df <- read.transactions('https://raw.githubusercontent.com/SubhalaxmiRout002/DATA624/main/Week4/GroceryDataSet.csv', sep = ",", format = "basket")
+
+grocery_df
+```
+\newpage   
+
+
+## Exploratory Data Analysis  
+Use **summary()** to get the overview of data.  
+
+```{r mba-summary}
+summary(grocery_df)
+```
+
+
+The summary gives the number of rows and columns present in the data. It shows the purchase of the most frequent items, in that the whole milk is on the top, 2nd highest is other vegetables, 3rd rank is roll/buns, etc. 
+  
+Below this the length distribution of the items. There is a total of 32 items, the first item occurs 2159 times, 2nd item occurs 1643 times, and so on. This mean 2159 carts have 1st item, 1643 carts have 2nd items. If we add all these items’ frequencies it will sum up to the total number of rows that is 9835. If we look at the distribution, the mean is 4.4 which means on average there are 4 items per basket.  
+   
+\newpage  
+In itemFrequencyPlot(grocery_df, topN=10,type=“absolute”) first argument is the transaction object to be plotted that is grocery_df. topN allows to plot top N highest frequency items. type can be type=“absolute” or type=“relative”. If absolute it will plot numeric frequencies of each item independently. If relative it will plot how many times these items have appeared as compared to others.  
+```{r mba-item-freq}
+itemFrequencyPlot(grocery_df, topN = 10, type="absolute", col=brewer.pal(8,'Pastel2'), main = 'Top 10 items purchased')
+```
+
+The above plot shows the same top 5 items as we get from summary():  
+1 whole milk  
+2 other vegetables  
+3 rolls/buns  
+4 soda  
+5 yogurt  
+
+\newpage  
+Now let's view the least purchased items.  
+```{r mba-bottom-sales}
+bottom_10 <- head(sort(itemFrequency(grocery_df, type="absolute"), decreasing=FALSE), n=10)
+par(mar=c(10.5,3,2, 0.3))
+barplot(bottom_10, ylab = "Frequency", main = "Bottom 10 items purchased", col=brewer.pal(8,'Pastel2'), las = 2)
+```
+
+The above plot shows the Bottom 10 items purchased.  
+1 baby food   
+2 sound storage medium   
+3 preservation products  
+4 bags  
+5 kitchen utensil   
+  
+\newpage  
+Items distribution in basket  
+```{r bottom10}
+hist(size(grocery_df), breaks = 0:35, xaxt="n", ylim=c(0,2200),
+     main = "Number of items in particular baskets", xlab = "Items", col = brewer.pal(8,'Pastel2'))
+axis(1, at=seq(0,33,by=1), cex.axis=0.8)
+```
+
+We can see that the number of baskets decreases with the increase number of items.  
+
+## Model Building  
+In this section using the APRIORI algorithm we make some rules and interpret how it works.  
+
+### Generating Rules  
+Next step is to mine the rules using the APRIORI algorithm. The function apriori() is from package arules.  
+```{r mba-rules}
+# Min Support as 0.001, confidence as 0.8.
+association_rules <- apriori(grocery_df, parameter = list(supp=0.001, conf=0.8,maxlen=10), control=list(verbose=F))
+```
+
+The apriori will take dats as the transaction object on which mining is to be applied. Parameter will allow to set min_sup and min_confidence. The default values for parameter are minimum support of 0.1, the minimum confidence of 0.8, maximum of 10 items (maxlen).  
+```{r mba-assoc-rules}
+summary(association_rules)
+```
+  
+The above summary() shows the following:  
+* Parameter Specification: min_sup=0.001 and min_confidence=0.8 values with 10 items as max of items in a rule.  
+* Total number of rules: The set of 410 rules  
+* Distribution of rule length: A length of 4 items has the most rules: 229 and length of 6 items have the lowest number of rules:12  
+* Summary of Quality measures: Min and max values for Support, Confidence and, Lift.  
+* Information used for creating rules: The data, support, and confidence we provided to the algorithm. 
+  
+Since there are 410 rules, let’s print only top 10:  
+```{r inspect-rules}
+inspect(association_rules[1:10])
+```
+
+Above rule table shows lsh, rhs, support, confidence, coverage, lift, count. Lets know about what these terms means.  
+* lhs: items present in the basket  
+* rhs: item more likely bought with lhs  
+* support: Fraction of transactions that contain the item-set  
+* confidence: For a rule A=>B Confidence shows the percentage in which B is bought with A.  
+* lift: Lift gives the correlation between A and B in the rule A=>B. Correlation shows how one item-set A effects the item-set B.  
+* count: Frequency of occurrence of an item-set  
+  
+Using the above output, we can make analysis such as:  
+* 100% of the customers who bought ’{rice,sugar} also bought {whole milk}.  
+* 92% of the customers who bought {house keeping products,whipped/sour cream} also bought {whole milk}.  
+  
+### Removing redundant rules  
+We can remove rules that are subsets of larger rules. Use the code below to remove such rules:  
+```{r remove-subset}
+# get subset rules in vector
+subset_rules <- which(colSums(is.subset(association_rules, association_rules)) > 1)
+length(subset_rules)
+```
+
+### Finding Rules related to single item
+Sometimes, we want to work on a specific product. If want to find out what causes influence on the purchase of item X, we can use the appearance option in the apriori command. Appearance gives options to set LHS (IF part) and RHS (THEN part) of the rule.
+
+For example, to find what customers buy before buying ‘whole milk’ run the following line of code:
+```{r whole-milk-appearance}
+whmilk_association_rules <- apriori(grocery_df, parameter = list(supp=0.001, conf=0.8), appearance = list(default="lhs",rhs="whole milk"), control=list(verbose=F))
+
+rules_whmilk_byconf <- sort(whmilk_association_rules, by="confidence", decreasing=TRUE)
+
+inspect(head(rules_whmilk_byconf, n = 10))
+```
+
+Lets find what customers buy before buying ‘Other vegetables’ run the following line of code:
+```{r other-veg-appearance}
+otherveg_association_rules <- apriori(grocery_df, parameter = list(supp=0.001, conf=0.8),appearance = list(default="lhs",rhs="other vegetables"), control=list(verbose=F))
+
+rules_otherveg_byconf <- sort(otherveg_association_rules, by="confidence", decreasing=TRUE)
+
+inspect(head(rules_otherveg_byconf, n = 10))
+```
+
+### Visualizing Association Rules
+A straight-forward visualization of association rules is to use a scatter plot using plot() of the arulesViz package. It uses Support and Confidence on the axes. In addition, third measure Lift is used by default to color (grey levels) of the points.
+```{r visualize-association-rules}
+# Filter rules with confidence greater than 0.4 or 40%
+subRules<-association_rules[quality(association_rules)$confidence>0.4]
+#Plot SubRules
+plot(subRules)
+```
+
+The above plot shows that rules with high lift have low support. There is one rule in the middle which has moderate support and high lift. And gray points shows high support less lift.
+
+Another way to visualize by individual Rule Representation. We need to pass method as “two-key plot”. The two-key plot uses support and confidence on x and y-axis respectively. It uses order for coloring. The order is the number of items in the rule.
+
+```{r 410-rules,message=FALSE}
+plot(subRules,method="two-key plot")
+```
+
+As we discussed in EDA section, items 4 has more rules and items 6 has less rules. That we can see in the plot.
+
+### Graph-Based Visualizations
+Graph plots are a great way to visualize rules but tend to become congested as the number of rules increases. So it is better to visualize less number of rules with graph-based visualizations. Here we will see top 10 rules from subRules which have the highest confidence.
+
+All the interactive graph has a dropdown, can select respective rules and see the graph.
+```{r gbv}
+top10subRules <- head(subRules, n = 10, by = "confidence")
+```
+
+Below, plot an interactive graph: Here we use engine=htmlwidget parameter in plot.
+```{r ig} 
+set.seed(123)
+plot(top10subRules, method = "graph",  engine = "htmlwidget")
+```
+
+The above graph showing more red color high lift, and high confidence. Rule 4 has big size and light red color, this means data suggest if some one buys {flour, root vegetables, whipped/soure cream} that persom may be buy {whole milk}. If we look at Rule 6 it has high confidence and high lift, this means there is high chance a person buys {citrus fruit, root vegetables, soft cheese} will buy {other vegetables}.
+
+Below graph for whole milk in RHS.  
+```{r whole-milk-rhs}
+set.seed(123)
+plot(head(whmilk_association_rules, n= 10), method = "graph",  engine = "htmlwidget")
+```
+
+Look at Rule 6, and Rule 8 both rules have high lift and high confidence. Rule 2 and Rule 9 has little low confidence and lift.
+Below graph for Other vegetables in RHS.
+```{r rules}
+set.seed(123)
+plot(head(otherveg_association_rules, n= 10), method = "graph",  engine = "htmlwidget")
+```
+
+Above plot, Rule 5 and Rule 7 have higher confidence and higher lift than other rules. Considering Rule 7, if a person buys {hard cheese, oil} more likely to buy {other vegetables}.
+
+### Individual Rule Representation
+This representation is also called as Parallel Coordinates Plot. It is useful to visualized which products along with which items cause what kind of sales.
+
+As mentioned above, the RHS is the Consequent or the item we propose the customer will buy; the positions are in the LHS where 2 is the most recent addition to our basket and 1 is the item we previously had.
+```{r individ-rule-rep}
+set.seed(123)
+subRules2<-head(subRules, n=10, by="lift")
+plot(subRules2, method="paracoord")
+```
+
+Above plot, we see the wide dark line of the arrow, which means a person who buys {red/blush wine, liquor} more likely to buy bottled beer. We can see the line next to the dark line, which means who buys {grapes, fruits/vegetables, citrus fruits} less likely to buy {pip fruit}.
+
+# Conclusions
+Since association rules are very useful in setting a strategy of the store, we found few conclusions out of the above analysis.
+
+Concerning the least sold products which are baby food, sound storage medium, preservation products, kitchen utensil, bags, frozen chicken, baby cosmetics, toilet cleaner, and salad dressing, the business should consider withdrawing them from sale. Set a sales promotion or promotion by combining these least sold products with more popular ones (e.g. vegetables with whole milk, soda, yogurt, etc.).
+
+Concerning the association rules, the grocery store can place other vegetables near fruits, root vegetables, cheese and place whole milk near rice, cereal, yogurt, and sour cream.
+
+# Market Basket Analysis in Python
+In addition to R we wanted to run the market basket analysis in Python and compare how the languages differ in packages, functions and results.  R & Python are the 2 most common languages used by data scientists and knowing how to run analyses in both languages is important.
+
+```{r,include=FALSE }
+#py_install("pandas",pip=TRUE)
+#py_install("numpy",pip=TRUE)
+#py_install("matplotlib",pip=TRUE)
+#py_install("seaborn",pip=TRUE)
+
+#py_install("mlxtend",pip=TRUE)
+```
+
+```{python, echo=F, warning=F, message=F}
+import warnings
+warnings.filterwarnings('ignore')
+```
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns; sns.set()
+
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules, fpgrowth
+```
+
+## Exploratory Data Analysis
+
+The GroceryDataSet is a list of transcations make at a grocery store. The dataset comes from the University of California, Irvine, their machine learning dataset.
+
+```{python}
+pd.set_option('display.max_columns', 40)
+
+df = pd.read_csv('https://raw.githubusercontent.com/SubhalaxmiRout002/DATA624/main/Week4/GroceryDataSet.csv', header=None).fillna(0)
+df.shape
+df.head()
+df.ne(0).sum().sum() / (df.shape[0] * df.shape[1])
+```
+
+When loading the data there was a lot of nan values which were filled with 0 to indicate there are no transcations past the last. The dataset contain 9835 market transcations which are mostly empty with only 13% of it's cells filled.
+
+## Data Preparation
+
+To get a better understanding of the dataset, the data will be transformed so each row is a transcation and each column is an item where the values are True or False if the item was purchased or not.
+
+```{python}
+all_items = df.apply(lambda x: [i for i in x if i != 0], axis=1).values.tolist()
+```
+
+mlxtend TransactionEncoder class is used to transform the data
+
+```{python}
+trans_encoder = TransactionEncoder()
+trans_encoder_matrix = trans_encoder.fit(all_items).transform(all_items)
+tdf = pd.DataFrame(trans_encoder_matrix, columns=trans_encoder.columns_).astype(int)
+tdf.head()
+```
+
+The transformation looks correct but we will verify the first row with the original dataset.
+
+```{python}
+tdf[['citrus fruit', 'semi-finished bread' ,'margarine', 'ready soups']].head()
+```
+
+Those values are correct.
+
+With the data fully transformed we can explore some top 10 most purchased items.
+
+```{python}
+plt.figure(figsize=(15,5));
+sns.barplot(x=tdf.sum().nlargest(10).index , y=tdf.sum().nlargest(10).values, palette = 'hot');
+plt.xlabel('Items', size = 12);
+plt.xticks(rotation=30);
+plt.ylabel('Counts', size = 12);
+plt.title('Top 10 most purchased items', size = 20);
+plt.subplots_adjust(bottom=0.25, top=0.9);
+plt.show();
+
+```
+
+This looks almost like my grocery transactions, milk and vegetables are definitely on top.
+
+```{python}
+plt.figure(figsize=(15,5));
+sns.barplot(x=tdf.sum().nsmallest(10).index , y=tdf.sum().nsmallest(10).values, palette = 'cool');
+plt.xlabel('Items', size = 12);
+plt.xticks(rotation=30);
+plt.ylabel('Counts', size = 12);
+plt.title('Top 10 least purchased items', size = 20);
+plt.subplots_adjust(bottom=0.25, top=0.9);
+plt.show();
+```
+
+This grocery store makes most of it's revenue from whole milk and vegetables and the least from baby food and sound storage medium.
+
+```{python}
+tdf.sum(1).describe().iloc[1:]
+```
+
+We can see on average a customer puchases 4.4 items where the longest chain is 32 items long, that was a very active shopper. As expected the minimum puchase is 1 since there are no rows with all 0s.
+
+## Model building
+
+Apriori is a popular algorithm for extracting frequent itemsets with applications in association rule learning. The apriori algorithm has been designed to operate on databases containing transactions, such as the one we are using.
+
+
+```{python}
+frequent_itemsets = apriori(tdf, min_support=0.001, use_colnames=True, max_len=2).assign(
+        length=lambda x: x['itemsets'].map(lambda x: len(x))
+)
+
+frequent_itemsets.head()
+
+```
+
+```{python}
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1).sort_values('lift', ascending=False)
+
+rules.head()
+
+```
+
+The association_rules returns 9 columns, but we are only interested in the first two and support, confidence and lift. Antecendents and Consequents are pairs of items that have associations and their strength is given by the lift/confidence.
+
+* Support is the joint probability of the antecendents and consequents [0,1]
+* Confidence is the conditional probability P(consequents|antecedents) [0,1]
+* Lift is a combination of Support and Confidence, range [0, inf]
+
+### Model exploration
+
+Now that we have the rules we can take a look at different associations.
+
+```{python}
+rules[rules['lift'].gt(1) & rules['confidence'].gt(0.6)]
+```
+
+Selecting rows with high lift and confidence score we can see a strong association between (honey, cereals and rice) with whole milk.
+
+```{python}
+rules['support'].describe()
+```
+
+We see that the support for all rules in our dataset is very low (i.e., the proportion of transactions that involve items from both baskets), which may be problematic, due to the fact that any results obtained from analysis may not be statistically significant.
+
+
+```{python}
+rules.loc[rules['lift'].idxmax()]
+```
+
+We see that itemsets mustard and mayonnaise have the highest lift. So if we know that a customer has bought mustard they are ~13 times more likely that they will purchase mayonaise as well. But as we've pointed out, due to the fact that the support is very low, we cannot really determine whether this is just a fluke or a real association.
+
+
+```{python}
+rules.loc[rules['lift'].idxmin()]
+```
+
+We see that itemsets rolls/buns and specialty chocolate have the lowest lift. The low lift makes sense because I can't think of a reason to have those two items together.
+
+
+```{python}
+rules[rules['consequents'].map(lambda x: list(x)[0]).eq('whole milk')].query('lift > 2')
+```
+
+Earler we saw that whole milk was the most frequently bought item, now we look at it's association. Items like cereals and honey are at the top probabily because we eat cereal with milk and put honey in our tea. A lot of the items involve baking as well, like baking powder, pudding powder, cooking chocolate and cocoa drinks.
+
+```{python}
+sup = rules['support'].values;
+conf = rules['confidence'].values;
+lift = rules['lift'].values;
+
+plt.figure(figsize=(10,6));
+sc = plt.scatter(sup,conf,c=lift);
+plt.colorbar(sc,label='Lift');
+plt.xlabel('support');
+plt.ylabel('confidence');
+plt.show();
+```
+
+
+```{python}
+rules[rules['lift'].gt(10)]
+```
+
+Finally I wanted to look at the relationship with support and confidence and how they influence lift, we can see a slight regression where support and confidence both increase in a linear fashion. Some of the larger lift values share similar support/confidence with small values so they don't apper in the plot. The table above shows the largest lift values.
+
+# Conclusion
+
+Exploring the grocery data set has exposed a lot of secrets in the grocery business. By implementing an apriori logrithm we found that certain items have strong association with other items making the pair a good target for coupons/adds. When it comes to item placement it would be a good idea to place items with high lift scores apart so customers will be exposed to other products along the way. I am certain many grocery stores already implement these approaches to maximize profit.
+
+However the analysis done here shouldn't be stretch too far since we saw the support values are too low. More data is needed to make strong connections between items. Futhermore the dataset was small making it more likely that what we found isn't statistically significant.
+
+
+# Comparison of Market Basket Analysis in Python vs R   
+Here we are going to review the differences and similarities between each language in how they were able to accomplish the different steps in our analysis. 
+
+### Loading the Data 
+Beginning with loading the data, each language tackled the task differently.  While there are many ways to load data in each language, in R we used the function **read.transactions() from the package arules**.  This directly transformed the data from a csv into a transaction object.   
+   
+In Python, we used the **read_csv()** function along with **TransactionEncoder from mlxtend.preprocessing**.  This technique was more manual but achieved the same result.  Here is a view of the encoded data.    
+  
+### Viewing Top & Bottom Sold Products  
+In order to view the top 10 and bottom 10 products that were sold, in R we used the **function itemFrequencyPlot() from the package arules**.  In Python we used the **package seaborn and the function barplot()**.  Again, there are likely many ways to do this in each language.  
+
+### Mining Data for Rules  
+Mining the Market Basket data in Python and R were very similar.  They both used the **function apriori()**.  In R, this function is apart of the **package arules** and in Python this function is used as part of the **mlxtend.frequent_patterns package**.  Python also used the function association_rules from the same mlxtend.frequent_patterns package.  
+
+### Visualizing Rules  
+In order to visualize the rules, R uses the **function plot() from within the package arulesViz**. In Python we used matplotlib.pyplot in order to view the relationship between support and confidence.  Again, there are likely many ways to accomplish the same objective in both languages.  
+  
+#### Resources  
+https://www.youtube.com/watch?v=dYM-IaB61CA  
+https://www.statology.org/ridge-regression-in-r/  
+https://www.analyticsvidhya.com/blog/2016/01/ridge-lasso-regression-python-complete-tutorial/  
+[Data Camp market basket analysis] https://www.datacamp.com/community/tutorials/market-basket-analysis-r  
+[R51 Association Rules, Market Basket Analysis in R Recommender Systems]https://www.youtube.com/watch?v=iASqPvQpJ20
+
