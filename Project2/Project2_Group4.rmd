@@ -50,6 +50,7 @@ library(imputeTS)
 library(tidymodels)
 library(mice)
 library(inspectdf)
+library(vip)
 library(lubridate)
 library(corrplot)
 library(caret)
@@ -58,7 +59,7 @@ library(randomForest)
 library(Cubist)
 library(iterators)
 library(parallel)
-library(doMC)
+#library(doMC)
 library(knitr)
 ```
 
@@ -248,7 +249,7 @@ train_cor <- cor(numeric_values)
 corrplot::corrplot.mixed(train_cor, tl.col = 'black', tl.pos = 'lt')
 ```
 
-We see many of our features are *highly* correlated. There are several methods we could use to solve this, however, because we have many features, it may make sense to use principal component analysis, which will allow us to reduce the number of columns in our model and hopefully produce a simpler model. 
+We see many of our features are *highly* correlated. There are several methods we could use to solve this, however, because we have many features, it may make sense to use principal component analysis, which will allow us to reduce the number of columns in our model and hopefully produce a simpler model. Additionally, many tree-based models are not as sensitive to collinearity like linear models, therefore, we'll focus our efforts on non-linear models in the modeling phase. 
 
 **Summary EDA Notes**
 * Feature distributions are skewed and may benefit from a transformation
@@ -396,30 +397,13 @@ avNNet_model <- train(trainingData, train$ph,
 plot(avNNet_model)
 ```
 
-```{r, echo=FALSE}
-
-download.file(
-    url='https://raw.githubusercontent.com/SubhalaxmiRout002/DATA624/main/Project2/Screen%20Shot%202021-07-14%20at%203.06.44%20PM.png',
-    destfile='image1.png',
-    mode='wb')
-knitr::include_graphics(path='image1.png')
-```
-
-The results show that the optimum number of hidden units is 8 and the decay parameter is 0.1.
 
 ```{r, eval=FALSE, include=TRUE}
 avNNet_predict <- predict(avNNet_model, newdata = testData)
 avNNet_results <- postResample(pred = avNNet_predict, obs = test$ph)
-avNNet_results
+
 ```
 
-```{r, echo=FALSE}
-download.file(
-    url='https://raw.githubusercontent.com/SubhalaxmiRout002/DATA624/main/Project2/Screen%20Shot%202021-07-14%20at%203.07.00%20PM.png',
-    destfile='image2.png',
-    mode='wb')
-knitr::include_graphics(path='image2.png')
-```
 
 #### Compare Models
 
@@ -457,16 +441,21 @@ metrics <- data.frame(rbind(
 | Neural Nets|    0.6246003     |     0.5758669    |    0.4811444     |
 
 
-Based on the model results above, we have chosen the Cubist model as our final model. The cubist model has the lowest RMSE and MAE values as well as the highest $R^2$ values. 
+Based on the model results above, we have chosen the **Cubist regression** model as our final model. The cubist model has the lowest RMSE and MAE.The $R^2$ values should only be used to compare models of the same type. 
 
 
 #### Variable Importance
 
-Here, we'll take the best performing models and make note of any similarities in the most important variables. If any of the top variables had shown collinearity with other variables, it's possible that the variable importance is misstated and split amongst the correlated variables.
+Having selected our best preforming model, we can now use caret's `varImp` method to look at what features within our dataset are most important when fitting the model. 
+
+```{r fig.height=7, fig.width=10}
+plot(caret::varImp(cubist), main = "Cubist Regression Model Variable Importance")
+```
+It appears that `mnf_flow`, `brand code`, `balling` and `balling_lvl` are key to our model's performance. We saw in our correlation plot that `mnf_flow` had the strongest relationship with `pH`. Additionally, we saw in our box plots that `brand code` had a significant relationship with `pH` as well.   
 
 ## Predictions on the Test Set
 
-Now that we've determined our top performing model, we'll use this model to predict on our test set. Before making predictions, we'll need to perform the same data processing steps as we have done with our training dataset. 
+We'll use this model to predict on our test set. Before making predictions, we'll need to perform the same data processing steps as we have done with our training dataset. 
 
 #### Imputing Evaluation Data
 
@@ -508,5 +497,18 @@ eval2 <- eval2 %>%
 Having imputed any missing values in our test set, we are now ready to make our final predictions. 
 
 #### Final Predictions
+
+We make our final predictions by calling the `predict` method and passing in the eval2 dataframe which is our test set with all the necessary imputations for missing values. Once the predictions have been made, we'll push them to a CSV file where they can be evaluated. 
+
+```{r}
+final_predictions <- predict(cubist, eval2)
+head(final_predictions)
+```
+
+
+```{r}
+#write.csv(final_predictions, "C:/Users/chris/OneDrive/Master Of Data Science - CUNY/Summer 2021/Predictive_Analytics/Predictive-Analytics/Project2/final_predictions.csv")
+```
+
 
 ## Conclusion
