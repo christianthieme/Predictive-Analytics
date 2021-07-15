@@ -57,9 +57,6 @@ library(caret)
 library(fpp3)
 library(randomForest)
 library(Cubist)
-library(iterators)
-library(parallel)
-#library(doMC)
 library(knitr)
 ```
 
