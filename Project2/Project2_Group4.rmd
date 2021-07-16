@@ -302,6 +302,13 @@ df3$brand2 <- NULL
 
 As part of our processing, we attempted many different transformations and adjustments, but saw no improvement in our RMSE or MAE, in fact, many of the changes negatively affected our accuracy, as such, we chose a simpler processing approach. We experimented with YeoJohnson transformations, centering, scaling, excluding highly correlated features, and principal component analysis. Ultimately, we determined that only using KNN to impute missing values in our numerical columns and a multinomial model to impute missing values in our categorical column produced the most accurate results. 
 
+#### Feature Engineering
+
+```{r}
+
+```
+
+
 #### Train Test Split
 
 After imputing, we'll use caret's `createDataPartition` to determine a stratified 80/20 split. We will use this test dataset to evaluate all our models, however, if two or more models have close error and variance measures, we can continue with cross validation on additional splits.
@@ -520,3 +527,4 @@ head(final_predictions)
 
 
 ## Conclusion
+
