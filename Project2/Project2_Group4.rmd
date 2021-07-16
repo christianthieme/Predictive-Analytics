@@ -95,6 +95,7 @@ eval <- combined %>%
   select(-obs_type)
 glimpse(combined)
 ```
+
 We see that all columns, with the exception of `brand`, are doubles and continuous. Excluding the response variable, this means that we have 1 categorical variable and 31 continuous variables to work with. 
 
 ## Exploratory Data Analysis
@@ -249,6 +250,7 @@ corrplot::corrplot.mixed(train_cor, tl.col = 'black', tl.pos = 'lt')
 We see many of our features are *highly* correlated. There are several methods we could use to solve this, however, because we have many features, it may make sense to use principal component analysis, which will allow us to reduce the number of columns in our model and hopefully produce a simpler model. Additionally, many tree-based models are not as sensitive to collinearity like linear models, therefore, we'll focus our efforts on non-linear models in the modeling phase. 
 
 **Summary EDA Notes**
+
 * Feature distributions are skewed and may benefit from a transformation
 * Missing data will most likely not be a significant issue
 * There are several outliers in our features - we should think about using a modeling technique that is robust against outliers
@@ -275,7 +277,7 @@ df3 <- df3[, -isNZV]
 # imputing numeric variables
 pp <- df3 %>%
   as.data.frame() %>%
-  preProcess(method = 'knnImpute')
+  preProcess(method = c('knnImpute'))
 # apply imputation of numeric variables
 df3 <- predict(pp, df3)
 # remove rows without a brand code
@@ -295,9 +297,14 @@ df3$brand_code <- ifelse(!is.na(df3$brand_code), df3$brand_code, df3$brand2)
 df3$brand2 <- NULL
 ```
 
+
+**Processing Note**
+
+As part of our processing, we attempted many different transformations and adjustments, but saw no improvement in our RMSE or MAE, in fact, many of the changes negatively affected our accuracy, as such, we chose a simpler processing approach. We experimented with YeoJohnson transformations, centering, scaling, excluding highly correlated features, and principal component analysis. Ultimately, we determined that only using KNN to impute missing values in our numerical columns and a multinomial model to impute missing values in our categorical column produced the most accurate results. 
+
 #### Train Test Split
 
-After imputing, we'll be using caret's `createDataPartition` to determine a stratified 80/20 split. We will use this test dataset to evaluate all our models, however, if two or more models have close error and variance measures, we can continue with cross validation on additional splits.
+After imputing, we'll use caret's `createDataPartition` to determine a stratified 80/20 split. We will use this test dataset to evaluate all our models, however, if two or more models have close error and variance measures, we can continue with cross validation on additional splits.
 
 ```{r}
 set.seed(101)
@@ -310,7 +317,7 @@ test <- df3[-trainIndex, ]
 
 ## Modeling
 
-Having split our data into a training and testing set, we're now ready to fit and train our models. Based on our exploratory data analysis, we have determined that non-linear models would most likely perform best on this dataset when creating predictions. With this in mind, we'll fit and train several different non-linear models in an effort to to see which one predicts with the lowest error and least variance on the test dataset. Once we determine which model is the most accurate, we'll move forward with creating predictions on the provided scoring set. We have chosen the following models to train: 
+Having split our data into a training and testing set, we're now ready to fit and train our models. Due to the non-linear relationships of our features to the response variable as well the outliers we observed and other issues noted during our exploratory data analysis, we have determined that non-linear models would most likely perform best on this dataset when creating predictions. With this in mind, we'll fit and train several different non-linear models in an effort to to see which one predicts with the lowest error and least variance on the test dataset. Once we determine which model is the most accurate, we'll move forward with creating predictions on the provided scoring set. We have chosen the following models to train: 
 
 * Multivariate adaptive regression splines (MARS)
 * Support-vector machines (SVM)
@@ -360,7 +367,7 @@ cubist <- train(ph ~ .,
 ```
 
 ```{r, eval=FALSE, include=TRUE}
-#Avg Neural Nets
+# Avg Neural Nets
 set.seed(100)
 
 
@@ -439,6 +446,10 @@ metrics <- data.frame(rbind(
 
 
 Based on the model results above, we have chosen the **Cubist regression** model as our final model. The cubist model has the lowest RMSE and MAE.The $R^2$ values should only be used to compare models of the same type. 
+
+```{r}
+postResample(predict(cubist, test), test$ph)
+```
 
 
 #### Variable Importance
