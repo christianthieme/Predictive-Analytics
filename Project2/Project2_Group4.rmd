@@ -76,7 +76,7 @@ We have been given a dataset from a beverage manufacturing company that consists
 
 We'll begin by reading in the dataset and looking at each column's data type: 
 
-```{r}
+```{r initial_data_setup}
 data_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentData%20-%20TO%20MODEL.csv')
 data_raw$obs_type <- "train"
 eval_raw <- readr::read_csv('https://raw.githubusercontent.com/christianthieme/Predictive-Analytics/main/Project2/data/StudentEvaluation-%20TO%20PREDICT.csv')
@@ -179,10 +179,12 @@ Now that we've looked at our response variable, let's look at our explanatory va
 df %>%
   dplyr::select(brand_code, ph) %>%
   ggplot() + 
-  aes(y = ph) + 
+  aes(x = brand_code, y = ph) + 
   geom_boxplot(color = 'steelblue', outlier.color = 'firebrick', outlier.alpha = 0.35)+
-  labs(title = 'Brand Code Box Plots') + 
-  facet_grid(~brand_code) +
+  labs(title = 'Brand Code Box Plots',
+       x = element_blank(),
+       y = 'pH') + 
+  # facet_grid(~brand_code) +
 #  theme_minimal() + 
   theme(
     plot.title = element_text(hjust = 0.45),
@@ -193,7 +195,6 @@ df %>%
    # panel.background = element_blank(),
     axis.ticks.x = element_line(color = "grey")
   )
-  #theme(axis.ticks.x = element_blank())
 ```
 
 We can see from the above boxplots that `brand_code` does have a meaningful relationship with pH. We can also see some significant outliers in C and possibly D that will need to be evaluated further. We'll now turn our attention to the numeric features in our dataset.
@@ -276,7 +277,7 @@ We'll need to impute missing data for both numeric and categorical variables. We
 
 We do not use the combined dataset to train our model or impute values, under the assumption that this evaluation data wouldn't be available to us when training our models. In practice, when we're faced with a new dataset, it would be impossible to use that data in the process of training our models.
 
-```{r}
+```{r impute}
 # remove rows without a response variable
 df3 <- df %>%
   filter(!is.na(ph)) %>%
@@ -319,7 +320,7 @@ As part of our processing, we attempted many different transformations and adjus
 
 After imputing, we'll use caret's `createDataPartition` to determine a stratified 80/20 split. We will use this test dataset to evaluate all our models, however, if two or more models have close error and variance measures, we can continue with cross validation on additional splits. During our EDA we noted that `brand_code` was a significant feature within our dataset, as such we chose to use a stratified sampling approach in an effort to make our training and testing sets more uniform. 
 
-```{r}
+```{r train_test_split}
 set.seed(101)
 trainIndex <-  createDataPartition(df3$ph,
                                    p = 0.8,
@@ -341,7 +342,7 @@ Having split our data into a training and testing set, we're now ready to fit an
 
 As part of our training, we are using cross fold validation in an effort to select the optimal parameters for each model. 
 
-```{r}
+```{r models}
 # MARS
 marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
 set.seed(101)
@@ -382,7 +383,7 @@ cubist <- train(ph ~ .,
 
 * *Note: Due to the long length of time it takes to train our Neural Nets models, we have configured the below code chunk not to run, but have saved the results of the model run in the table below in the Compare Models section.*
 
-```{r, eval=FALSE, include=TRUE}
+```{r neural_nets, eval=FALSE, include=TRUE}
 # Avg Neural Nets
 set.seed(100)
 
@@ -418,7 +419,7 @@ plot(avNNet_model)
 ```
 
 
-```{r, eval=FALSE, include=TRUE}
+```{r nn_results, eval=FALSE, include=TRUE}
 avNNet_predict <- predict(avNNet_model, newdata = testData)
 avNNet_results <- postResample(pred = avNNet_predict, obs = test$ph)
 
@@ -429,7 +430,7 @@ avNNet_results <- postResample(pred = avNNet_predict, obs = test$ph)
 
 Having trained each of our models, we'll now turn our attention to evaluating the predictive power of each of the models. We'll use `postResample` to measure the error between each of the model's predictions and the holdout test data and display the accuracy metrics in the table below: 
 
-```{r}
+```{r compare_models}
 # predictions
 test$mars <- predict(mars, test)
 test$svm <- predict(svm, test)
@@ -461,6 +462,47 @@ metrics <- data.frame(rbind(
 | Neural Nets|    0.6246003     |     0.5758669    |    0.4811444     |
 
 
+#### Cross Validation
+
+The measure of error for the random forest and the cubist models were close, so we'll do one pass of cross validation with a new train/test split in order to have additional confidence in the chosen model.
+
+```{r cross_validation}
+# create new train/test split with different seed and 75/25 split
+set.seed(2)
+trainIndex <-  createDataPartition(df3$ph,
+                                   p = 0.75,
+                                   list = F)
+train2 <- df3[trainIndex, ]
+test2 <- df3[-trainIndex, ]
+
+# random forest
+rf2 <- randomForest(ph ~ .,
+                    data = train2,
+                    ntrees = 1000)
+
+# cubist
+cubist2 <- train(ph ~ .,
+                 data = train2,
+                 method = 'cubist')
+
+# predictions
+test2$rf <- predict(rf2, test2)
+test2$cubist <- predict(cubist2, test2)
+
+# measure of error and variance
+metrics2 <- data.frame(rbind(
+  postResample(pred = test$cubist, obs = test$ph),
+  postResample(pred = test2$rf, obs = test2$ph),
+  postResample(pred = test2$cubist, obs = test2$ph)
+),
+  row.names = c('Cubist v1', 'Random Forest',  'Cubist v2')
+)
+
+metrics2
+```
+
+Comparing the 2nd fit of random forest vs cubist, the 2nd random forest fit shows a relatively greater error when predicting on the new test set, so the cubist is the better model again. When comparing the first and second cubist models, the first cubist outperforms the second.
+
 Based on the model results above, we have chosen the **Cubist regression** model as our final model. The cubist model has the lowest RMSE and MAE.The $R^2$ values should only be used to compare models of the same type. 
 
 ```{r}
@@ -472,10 +514,12 @@ postResample(predict(cubist, test), test$ph)
 
 Having selected our best preforming model, we can now use caret's `varImp` method to look at what features within our dataset are most important when fitting the model. 
 
-```{r fig.height=7, fig.width=10}
+```{r var_importance, fig.height=7, fig.width=10}
 plot(caret::varImp(cubist), main = "Cubist Regression Model Variable Importance")
 ```
 It appears that `mnf_flow`, `brand code`, `balling` and `balling_lvl` are key to our model's performance. We saw in our correlation plot that `mnf_flow` had the strongest relationship with `pH`. Additionally, we saw in our box plots that `brand code` had a significant relationship with `pH` as well.   
+
+`balling`, `balling_lvl`, and `density` are all within the top 7 most important variables in this model, with significant correlations. We attempted to model after excluding the collinear variables, but that resulted in a less accurate model. It's possible that the variable importance of these three variables might be misrepresented due to correlation.
 
 ## Predictions on the Test Set
 
