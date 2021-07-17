@@ -150,7 +150,7 @@ df %>%
   )
 ```
 
-Breaking down to this further grain does not seem to be much more helpful. There may be even more granular sub-populations within this data that we are not seeing. 
+Breaking down to this further grain does not seem to be much more helpful in eliminating some of the bi/multi-modal nature of these distributions. There may be even more granular sub-populations within this data that we are not seeing. 
 
 Now we'll turn our attention to the numeric features within our dataset: 
 
@@ -164,7 +164,7 @@ df %>%
 
 We note the following about these distributions: 
 
-* `air_pressurer` - there appears to be either two distributions here, or a single distribution with a pocket of outliers
+* `air_pressurer` - there appears to be either two distributions here, or a single distribution and a pocket of outliers
 * `balling`, `balling_lvl`, `density`,`fill_ _pressure`, `hyd_pressure1`, `hyd_pressure2`, `hyd_pressure3`, `hyd_pressure4`, `mnf_flow`, `pressure_setpoint`- there appears to be two distributions here. This could potentially be connected to the type of `brand_code` or something else not as easily distinguishable. 
 * `bowl_setpoint` - half of all the values are around 120
 * `carb_flow` - most values fall between 3,000 and 4,000 with a large pocket of values at 1,000 as well
@@ -232,7 +232,7 @@ We note the following about the relationship between pH and these variables:
 * `psc_co2` - appear to be discrete values. We note the presence of an outlier
 * `psc_fill` - there appear to be 5 bands that values can fall into with certain areas that do not have values. We may consider adding a categorical variable to capture this
 * `carb_pressure`, `carb_pressure1`, `carb_rel`, `carb_volume`, `fill_ounces`, `fill_pressure`, `filler_level`, `hyd_pressure1-4`, `mfr`, `oxygen_filler`, `pc_volume`, `psc`, `temperature`, `usage_cont`- no visible relationship. We do note the presence of outliers
-* General note: It appears that many of these variables are on different scales. We'll take care of this during our data prep phase. 
+* General note: It appears that many of these variables are on different scales. We'll take care of this during our data prep phase. Additionally, there looks to be one outlier in most of these visuals. This outlier may need to be removed. 
 
 **Correlated Features**
 
@@ -260,6 +260,16 @@ We see many of our features are *highly* correlated. There are several methods w
 
 ## Data Processing
 
+#### Outliers
+
+In our analysis of the data, we noted several outliers. Most of those outliers come from one value with a pH of 9.36. We removed this outlier, but saw a marked reduction in accuracy and so made the decision to keep the value in the training set. 
+
+
+#### Feature Engineering
+
+Many attempts were made at feature engineering, including combining features, rounding features, using other features as a percentage of other features, etc., however, any additional features seemed to decrease the performance of our model. It may be that each feature has fairly strong signal on its own, and our engineering may have been confounding that signal. As such, we have not included any additional features in our dataset. 
+
+
 #### Data Imputation
 
 We'll need to impute missing data for both numeric and categorical variables. We'll use the `knnImpute` method for the numeric variables and a multinomial logistic regression model to impute the `brand_code` variable. 
@@ -277,9 +287,9 @@ df3 <- df3[, -isNZV]
 # imputing numeric variables
 pp <- df3 %>%
   as.data.frame() %>%
-  preProcess(method = c('knnImpute'))
+  preProcess(method = c('knnImpute')) 
 # apply imputation of numeric variables
-df3 <- predict(pp, df3)
+df3 <- predict(pp, df3) 
 # remove rows without a brand code
 df3b <- df3 %>%
   filter(!is.na(brand_code))
@@ -300,18 +310,14 @@ df3$brand2 <- NULL
 
 **Processing Note**
 
-As part of our processing, we attempted many different transformations and adjustments, but saw no improvement in our RMSE or MAE, in fact, many of the changes negatively affected our accuracy, as such, we chose a simpler processing approach. We experimented with YeoJohnson transformations, centering, scaling, excluding highly correlated features, and principal component analysis. Ultimately, we determined that only using KNN to impute missing values in our numerical columns and a multinomial model to impute missing values in our categorical column produced the most accurate results. 
+As part of our processing, we attempted many different transformations and adjustments, but saw no improvement in our RMSE or MAE, in fact, many of the changes negatively affected our accuracy, as such, we chose a simpler processing approach. We experimented with YeoJohnson transformations, centering, scaling, excluding highly correlated features, and principal component analysis. Ultimately, we determined that *only* using KNN to impute missing values in our numerical columns and a multinomial model to impute missing values in our categorical column produced the most accurate results. 
 
-#### Feature Engineering
 
-```{r}
-
-```
 
 
 #### Train Test Split
 
-After imputing, we'll use caret's `createDataPartition` to determine a stratified 80/20 split. We will use this test dataset to evaluate all our models, however, if two or more models have close error and variance measures, we can continue with cross validation on additional splits.
+After imputing, we'll use caret's `createDataPartition` to determine a stratified 80/20 split. We will use this test dataset to evaluate all our models, however, if two or more models have close error and variance measures, we can continue with cross validation on additional splits. During our EDA we noted that `brand_code` was a significant feature within our dataset, as such we chose to use a stratified sampling approach in an effort to make our training and testing sets more uniform. 
 
 ```{r}
 set.seed(101)
@@ -372,6 +378,9 @@ cubist <- train(ph ~ .,
                 method = 'cubist')
 
 ```
+
+
+* *Note: Due to the long length of time it takes to train our Neural Nets models, we have configured the below code chunk not to run, but have saved the results of the model run in the table below in the Compare Models section.*
 
 ```{r, eval=FALSE, include=TRUE}
 # Avg Neural Nets
@@ -526,5 +535,8 @@ head(final_predictions)
 ```
 
 
-## Conclusion
+## Conclusion and Next Steps
 
+Throughout this project, we imported the data, performed extensive exploratory data analysis, processed our data, and finally trained a model and made predictions. Throughout this process, we determined that the Cubist Regression model was the most accurate model, and used it to generate our final predictions. We did an extensive amount of experimenting with tranformations, imputation methods, and feature engineering, but at the end of the day, the simplist dataset seemed to perform the best. 
+
+With the unique nature of this dataset, we believe strong domain knowledge would be necessary to take this model to the next level. Often with these detailed datasets with many columns, it is hard to create new meaningful features without strong domain knowledge in the area. We believe feature engineering would be the place to focus and that additional modeling gains could be made by creating additional features from this rich dataset. 
