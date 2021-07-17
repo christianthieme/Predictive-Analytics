@@ -495,7 +495,7 @@ metrics2 <- data.frame(rbind(
   postResample(pred = test2$rf, obs = test2$ph),
   postResample(pred = test2$cubist, obs = test2$ph)
 ),
-  row.names = c('Cubist v1', 'Random Forest',  'Cubist v2')
+  row.names = c('Cubist v1', 'Random Forest v2',  'Cubist v2')
 )
 
 metrics2
