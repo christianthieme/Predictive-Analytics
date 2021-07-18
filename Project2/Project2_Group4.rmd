@@ -3,6 +3,11 @@ title: "Data624 Project 2"
 author: "Group 4"
 date: "`r Sys.Date()`"
 output:
+  word_document:
+    toc: yes
+    toc_depth: '4'
+  pdf_document:
+    toc: yes
   html_document:
     font-family: Consolas
     highlight: tango
@@ -11,11 +16,6 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
-  pdf_document:
-    toc: yes
-  word_document:
-    toc: yes
-    toc_depth: '4'
 ---
 
 ```{=html}
@@ -275,7 +275,7 @@ Many attempts were made at feature engineering, including combining features, ro
 
 We'll need to impute missing data for both numeric and categorical variables. We'll use the `knnImpute` method for the numeric variables and a multinomial logistic regression model to impute the `brand_code` variable. 
 
-We do not use the combined dataset to train our model or impute values, under the assumption that this evaluation data wouldn't be available to us when training our models. In practice, when we're faced with a new dataset, it would be impossible to use that data in the process of training our models.
+We do not use the combined dataset to train our model or impute values under the assumption that this evaluation data wouldn't be available to us when training our models. In practice, when we're faced with a new dataset, it would be impossible to use that data in the process of training our models.
 
 ```{r impute}
 # remove rows without a response variable
@@ -498,16 +498,18 @@ metrics2 <- data.frame(rbind(
   row.names = c('Cubist v1', 'Random Forest v2',  'Cubist v2')
 )
 
-metrics2
 ```
+
+
+| Model Type | RMSE              | $R^2$             | MAE               | 
+|------------|-------------------|-------------------|-------------------|
+| Cubist v1  | `r metrics2[1,1]` | `r metrics2[1,2]` | `r metrics2[1,3]` |
+| RF v2      | `r metrics2[2,1]` | `r metrics2[2,2]` | `r metrics2[2,3]` |
+| Cubist v2  | `r metrics2[3,1]` | `r metrics2[3,2]` | `r metrics2[3,3]` |
 
 Comparing the 2nd fit of random forest vs cubist, the 2nd random forest fit shows a relatively greater error when predicting on the new test set, so the cubist is the better model again. When comparing the first and second cubist models, the first cubist outperforms the second.
 
 Based on the model results above, we have chosen the **Cubist regression** model as our final model. The cubist model has the lowest RMSE and MAE.The $R^2$ values should only be used to compare models of the same type. 
-
-```{r}
-postResample(predict(cubist, test), test$ph)
-```
 
 
 #### Variable Importance
@@ -523,7 +525,7 @@ It appears that `mnf_flow`, `brand code`, `balling` and `balling_lvl` are key to
 
 ## Predictions on the Test Set
 
-We'll use this model to predict on our test set. Before making predictions, we'll need to perform the same data processing steps as we have done with our training dataset. 
+We'll use the Cubist regression model to predict on our test set. Before making predictions, we'll need to perform the same data processing steps as we have done with our training dataset. 
 
 #### Imputing Evaluation Data
 
